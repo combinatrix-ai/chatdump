@@ -1,7 +1,7 @@
 const { app } = require('electron');
 const { createTray } = require('./tray');
-const { startScheduler, stopScheduler, setAccountRefreshCallback } = require('./scheduler');
-const store = require('./store');
+const { startScheduler, stopScheduler, setMenuRefreshCallback } = require('./scheduler');
+const { store, getAccounts } = require('./store');
 
 // Don't show dock icon on macOS (tray-only app)
 if (process.platform === 'darwin') {
@@ -9,19 +9,18 @@ if (process.platform === 'darwin') {
 }
 
 app.whenReady().then(() => {
-  const { onStatus, refreshAccountInfo } = createTray();
-  setAccountRefreshCallback(refreshAccountInfo);
+  const { onStatus, buildMenu } = createTray();
+  setMenuRefreshCallback(buildMenu);
 
-  // If vault path is configured, start scheduler
-  if (store.get('vaultPath')) {
+  // Start scheduler if there are any accounts
+  if (getAccounts().length > 0) {
     startScheduler(onStatus);
   } else {
-    onStatus('idle', 'Set vault path to start');
+    onStatus('idle', 'Add an account to start');
   }
 });
 
 app.on('window-all-closed', (e) => {
-  // Prevent app from quitting when all windows close (tray app)
   e.preventDefault();
 });
 

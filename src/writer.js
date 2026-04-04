@@ -1,13 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 
-function writeConversation(vaultPath, filename, markdownContent) {
-  const dir = path.join(vaultPath, 'raw', 'claude-ai');
+function writeConversation(vaultPath, providerSubdir, accountEmail, filename, markdownContent) {
+  // Output: {vault}/raw/{provider}/{email}/filename.md
+  const sanitizedEmail = accountEmail.replace(/[/\\:*?"<>|]/g, '_');
+  const dir = path.join(vaultPath, 'raw', providerSubdir, sanitizedEmail);
   fs.mkdirSync(dir, { recursive: true });
 
   const filePath = path.join(dir, filename);
 
-  // Only write if content changed
   if (fs.existsSync(filePath)) {
     const existing = fs.readFileSync(filePath, 'utf-8');
     if (existing === markdownContent) return false;

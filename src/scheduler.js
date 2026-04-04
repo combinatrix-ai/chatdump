@@ -1,81 +1,89 @@
-const store = require('./store');
+const { store, getAccounts, getAccount, updateAccount, getVaultPath } = require('./store');
 const { ensureAuthenticated, openLoginWindow } = require('./auth');
-const { fetchUpdatedConversations } = require('./api');
-const { conversationToMarkdown, makeFilename } = require('./converter');
+const { getProvider } = require('./providers');
 const { writeConversation } = require('./writer');
-const { gitSync } = require('./sync');
 
 let intervalId = null;
+let onMenuRefresh = null;
 
-let onAccountRefresh = null;
-
-function setAccountRefreshCallback(cb) {
-  onAccountRefresh = cb;
+function setMenuRefreshCallback(cb) {
+  onMenuRefresh = cb;
 }
 
-async function runSync(onStatus) {
-  console.log('[webui-sync] runSync started');
-  const vaultPath = store.get('vaultPath');
+async function syncAccount(accountId, onStatus) {
+  const account = getAccount(accountId);
+  if (!account) return;
+
+  const provider = getProvider(account.provider);
+  if (!provider) return;
+
+  const vaultPath = getVaultPath(accountId);
   if (!vaultPath) {
-    console.log('[webui-sync] no vault path');
-    onStatus?.('error', 'Vault path not configured');
+    onStatus?.('error', `${provider.displayName}: No vault path`, accountId);
     return;
   }
 
-  onStatus?.('syncing', 'Authenticating...');
+  onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
 
   try {
-    await ensureAuthenticated();
-    console.log('[webui-sync] authenticated');
+    await ensureAuthenticated(account.provider);
   } catch (e) {
-    console.log('[webui-sync] auth failed:', e.message);
-    onStatus?.('error', 'Authentication required');
-    try { await openLoginWindow(); } catch { return; }
+    onStatus?.('error', `${provider.displayName}: Login required`, accountId);
+    updateAccount(accountId, { status: 'expired' });
+    onMenuRefresh?.();
+    return;
   }
 
-  onStatus?.('syncing', 'Fetching conversations...');
+  onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
 
   try {
-    console.log('[webui-sync] fetching conversations...');
-    const conversations = await fetchUpdatedConversations((current, total) => {
-      onStatus?.('syncing', `Fetching ${current}/${total} conversations...`);
+    const timestamps = account.timestamps || {};
+    const conversations = await provider.fetchConversations(timestamps, (current, total) => {
+      onStatus?.('syncing', `${provider.displayName}: ${current}/${total}`, accountId);
     });
-    console.log(`[webui-sync] fetched ${conversations.length} updated conversations`);
 
     let written = 0;
     for (const conv of conversations) {
-      const md = conversationToMarkdown(conv);
-      const filename = makeFilename(conv);
-      const changed = writeConversation(vaultPath, filename, md);
+      const md = provider.convertToMarkdown(conv);
+      const filename = provider.makeFilename(conv);
+      const changed = writeConversation(vaultPath, provider.subdir, account.email, filename, md);
       if (changed) written++;
     }
 
     const now = new Date().toISOString();
-    store.set('lastSyncedAt', now);
+    updateAccount(accountId, {
+      timestamps,
+      lastSyncedAt: now,
+      status: 'ok',
+    });
 
-    const msg = written > 0
-      ? `Synced ${written} files`
-      : 'All up to date';
-
-    onStatus?.('idle', msg);
-    onAccountRefresh?.();
+    const msg = written > 0 ? `Synced ${written} files` : 'Up to date';
+    onStatus?.('idle', `${provider.displayName}: ${msg}`, accountId);
   } catch (e) {
     if (e.message === 'AUTH_EXPIRED') {
-      onStatus?.('error', 'Session expired, re-login needed');
-      try { await openLoginWindow(); } catch { /* user closed */ }
+      onStatus?.('error', `${provider.displayName}: Session expired`, accountId);
+      updateAccount(accountId, { status: 'expired' });
     } else {
-      onStatus?.('error', `Sync failed: ${e.message}`);
-      console.error('Sync error:', e);
+      onStatus?.('error', `${provider.displayName}: ${e.message}`, accountId);
+      console.error(`[${account.provider}] Sync error:`, e);
     }
+  }
+
+  onMenuRefresh?.();
+}
+
+async function syncAll(onStatus) {
+  const accounts = getAccounts().filter((a) => a.autoSync);
+  for (const account of accounts) {
+    await syncAccount(account.id, onStatus);
   }
 }
 
 function startScheduler(onStatus) {
   const minutes = store.get('syncIntervalMinutes') || 30;
   stopScheduler();
-  intervalId = setInterval(() => runSync(onStatus), minutes * 60 * 1000);
-  // Run immediately on start
-  runSync(onStatus);
+  intervalId = setInterval(() => syncAll(onStatus), minutes * 60 * 1000);
+  syncAll(onStatus);
 }
 
 function stopScheduler() {
@@ -85,4 +93,4 @@ function stopScheduler() {
   }
 }
 
-module.exports = { runSync, startScheduler, stopScheduler, setAccountRefreshCallback };
+module.exports = { syncAccount, syncAll, startScheduler, stopScheduler, setMenuRefreshCallback };

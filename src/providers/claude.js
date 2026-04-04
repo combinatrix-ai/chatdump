@@ -1,51 +1,23 @@
-const { net } = require('electron');
+const { makeRequest } = require('./request');
+
+const BASE = 'https://claude.ai';
 
 const provider = {
   name: 'claude',
   displayName: 'Claude',
-  baseUrl: 'https://claude.ai',
-  loginUrl: 'https://claude.ai/login',
+  baseUrl: BASE,
+  loginUrl: `${BASE}/login`,
   subdir: 'claude',
   cookieName: 'sessionKey',
 
-  request(path) {
-    return new Promise((resolve, reject) => {
-      const req = net.request({
-        url: `${provider.baseUrl}/api${path}`,
-        useSessionCookies: true,
-      });
-      req.setHeader('Accept', 'application/json');
-      req.setHeader('Content-Type', 'application/json');
-
-      let body = '';
-      req.on('response', (response) => {
-        if (response.statusCode === 401 || response.statusCode === 403) {
-          reject(new Error('AUTH_EXPIRED'));
-          return;
-        }
-        if (response.statusCode >= 400) {
-          reject(new Error(`API error: ${response.statusCode}`));
-          return;
-        }
-        response.on('data', (chunk) => { body += chunk.toString(); });
-        response.on('end', () => {
-          try { resolve(JSON.parse(body)); }
-          catch (e) { reject(new Error(`Parse error: ${e.message}`)); }
-        });
-      });
-      req.on('error', reject);
-      req.end();
-    });
-  },
-
-  async getAccountInfo() {
-    const orgs = await provider.request('/organizations');
+  async getAccountInfo(ses) {
+    const orgs = await makeRequest(`${BASE}/api/organizations`, ses);
     if (!orgs || orgs.length === 0) return null;
     const org = orgs[0];
 
     let email = '', name = '';
     try {
-      const bootstrap = await provider.request('/bootstrap');
+      const bootstrap = await makeRequest(`${BASE}/api/bootstrap`, ses);
       email = bootstrap?.account?.email_address || '';
       name = bootstrap?.account?.display_name || bootstrap?.account?.full_name || '';
     } catch { /* ignore */ }
@@ -57,12 +29,12 @@ const provider = {
     return { email, name, plan, orgId: org.uuid };
   },
 
-  async fetchConversations(timestamps, onProgress) {
-    const orgs = await provider.request('/organizations');
+  async fetchConversations(ses, timestamps, onProgress) {
+    const orgs = await makeRequest(`${BASE}/api/organizations`, ses);
     if (!orgs || orgs.length === 0) return [];
     const orgId = orgs[0].uuid;
 
-    const conversations = await provider.request(`/organizations/${orgId}/chat_conversations`);
+    const conversations = await makeRequest(`${BASE}/api/organizations/${orgId}/chat_conversations`, ses);
     const toFetch = conversations.filter((c) => {
       const last = timestamps[c.uuid];
       return !last || last !== c.updated_at;
@@ -76,7 +48,7 @@ const provider = {
       onProgress?.(i + 1, toFetch.length);
       await new Promise((r) => setTimeout(r, 500));
       try {
-        const full = await provider.request(`/organizations/${orgId}/chat_conversations/${conv.uuid}`);
+        const full = await makeRequest(`${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`, ses);
         updated.push(full);
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {

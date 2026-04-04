@@ -1,5 +1,5 @@
 const { store, getAccounts, getAccount, updateAccount, getVaultPath } = require('./store');
-const { ensureAuthenticated, openLoginWindow } = require('./auth');
+const { ensureAuthenticated, openLoginWindow, getSession } = require('./auth');
 const { getProvider } = require('./providers');
 const { writeConversation } = require('./writer');
 
@@ -26,7 +26,7 @@ async function syncAccount(accountId, onStatus) {
   onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
 
   try {
-    await ensureAuthenticated(account.provider);
+    await ensureAuthenticated(account.provider, accountId);
   } catch (e) {
     onStatus?.('error', `${provider.displayName}: Login required`, accountId);
     updateAccount(accountId, { status: 'expired' });
@@ -37,8 +37,9 @@ async function syncAccount(accountId, onStatus) {
   onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
 
   try {
+    const ses = getSession(accountId);
     const timestamps = account.timestamps || {};
-    const conversations = await provider.fetchConversations(timestamps, (current, total) => {
+    const conversations = await provider.fetchConversations(ses, timestamps, (current, total) => {
       onStatus?.('syncing', `${provider.displayName}: ${current}/${total}`, accountId);
     });
 

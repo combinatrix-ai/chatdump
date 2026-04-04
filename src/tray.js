@@ -2,7 +2,7 @@ const { app, shell, Tray, Menu, nativeImage, dialog, BrowserWindow } = require('
 const path = require('path');
 const { store, getAccounts, upsertAccount, removeAccount, updateAccount, getVaultPath } = require('./store');
 const { syncAccount, syncAll } = require('./scheduler');
-const { openLoginWindow } = require('./auth');
+const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
 
 let tray = null;
@@ -84,12 +84,12 @@ function buildMenu() {
         {
           label: 'Re-login',
           click: async () => {
-            await openLoginWindow(account.provider).catch(() => {});
-            // Refresh account info
+            await openLoginWindow(account.provider, account.id).catch(() => {});
             const prov = getProvider(account.provider);
             if (prov) {
               try {
-                const info = await prov.getAccountInfo();
+                const ses = getSession(account.id);
+                const info = await prov.getAccountInfo(ses);
                 if (info) {
                   upsertAccount({ ...account, ...info, status: 'ok' });
                   buildMenu();
@@ -114,10 +114,32 @@ function buildMenu() {
     label: prov.displayName,
     click: async () => {
       try {
-        await openLoginWindow(prov.name);
-        const info = await prov.getAccountInfo();
+        // Login with a temp session first
+        const result = await openLoginWindow(prov.name);
+        const tempSes = result.session;
+
+        // Get account info using the temp session
+        const info = await prov.getAccountInfo(tempSes);
         if (info && info.email) {
           const accountId = `${prov.name}:${info.email}`;
+
+          // Copy cookies from temp session to the account's persistent session
+          const persistSes = getSession(accountId);
+          const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
+          for (const cookie of cookies) {
+            const cookieDetails = {
+              url: prov.baseUrl,
+              name: cookie.name,
+              value: cookie.value,
+              domain: cookie.domain,
+              path: cookie.path,
+              secure: cookie.secure,
+              httpOnly: cookie.httpOnly,
+              expirationDate: cookie.expirationDate,
+            };
+            await persistSes.cookies.set(cookieDetails).catch(() => {});
+          }
+
           upsertAccount({
             id: accountId,
             provider: prov.name,

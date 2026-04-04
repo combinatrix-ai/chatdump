@@ -1,46 +1,18 @@
-const { net } = require('electron');
+const { makeRequest } = require('./request');
+
+const BASE = 'https://chatgpt.com';
 
 const provider = {
   name: 'openai',
   displayName: 'ChatGPT',
-  baseUrl: 'https://chatgpt.com',
-  loginUrl: 'https://chatgpt.com/auth/login',
+  baseUrl: BASE,
+  loginUrl: `${BASE}/auth/login`,
   subdir: 'chatgpt',
   cookieName: '__Secure-next-auth.session-token',
 
-  request(path) {
-    return new Promise((resolve, reject) => {
-      const req = net.request({
-        url: `${provider.baseUrl}/backend-api${path}`,
-        useSessionCookies: true,
-      });
-      req.setHeader('Accept', 'application/json');
-      req.setHeader('Content-Type', 'application/json');
-
-      let body = '';
-      req.on('response', (response) => {
-        if (response.statusCode === 401 || response.statusCode === 403) {
-          reject(new Error('AUTH_EXPIRED'));
-          return;
-        }
-        if (response.statusCode >= 400) {
-          reject(new Error(`API error: ${response.statusCode}`));
-          return;
-        }
-        response.on('data', (chunk) => { body += chunk.toString(); });
-        response.on('end', () => {
-          try { resolve(JSON.parse(body)); }
-          catch (e) { reject(new Error(`Parse error: ${e.message}`)); }
-        });
-      });
-      req.on('error', reject);
-      req.end();
-    });
-  },
-
-  async getAccountInfo() {
+  async getAccountInfo(ses) {
     try {
-      const me = await provider.request('/me');
+      const me = await makeRequest(`${BASE}/backend-api/me`, ses);
       return {
         email: me?.email || '',
         name: me?.name || '',
@@ -53,14 +25,13 @@ const provider = {
     }
   },
 
-  async fetchConversations(timestamps, onProgress) {
-    // ChatGPT paginates with offset/limit
+  async fetchConversations(ses, timestamps, onProgress) {
     let allConvs = [];
     let offset = 0;
     const limit = 100;
 
     while (true) {
-      const page = await provider.request(`/conversations?offset=${offset}&limit=${limit}`);
+      const page = await makeRequest(`${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`, ses);
       const items = page?.items || [];
       allConvs = allConvs.concat(items);
       if (items.length < limit) break;
@@ -80,7 +51,7 @@ const provider = {
       onProgress?.(i + 1, toFetch.length);
       await new Promise((r) => setTimeout(r, 500));
       try {
-        const full = await provider.request(`/conversation/${conv.id}`);
+        const full = await makeRequest(`${BASE}/backend-api/conversation/${conv.id}`, ses);
         updated.push(full);
         timestamps[conv.id] = conv.update_time;
       } catch (e) {
@@ -131,16 +102,14 @@ const provider = {
 };
 
 function flattenMessages(mapping) {
-  // Find root node (no parent)
   const nodes = Object.values(mapping);
   let current = nodes.find((n) => !n.parent);
   if (!current) return [];
 
   const messages = [];
   const visited = new Set();
-
-  // Walk the tree depth-first following first child
   const queue = [current];
+
   while (queue.length > 0) {
     const node = queue.shift();
     if (visited.has(node.id)) continue;
@@ -158,7 +127,6 @@ function flattenMessages(mapping) {
       }
     }
 
-    // Add children to queue
     const children = (node.children || [])
       .map((id) => mapping[id])
       .filter(Boolean);

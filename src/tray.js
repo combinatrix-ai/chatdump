@@ -4,6 +4,7 @@ const { store, getAccounts, upsertAccount, removeAccount, updateAccount, getVaul
 const { syncAccount, syncAll } = require('./scheduler');
 const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
+const { getRecentLogs, openLogFile } = require('./synclog');
 
 let tray = null;
 let globalStatus = 'Ready';
@@ -27,85 +28,123 @@ function buildMenu() {
     const statusIcon = account.status === 'expired' ? ' ⚠' : ' ✓';
     const vaultPath = getVaultPath(account.id);
 
+    // Build submenu items
+    const sub = [];
+
+    // Error banner at top if there's an error
+    if (account.lastError) {
+      sub.push({ label: `⚠ ${account.lastError}`, enabled: false });
+      sub.push({ type: 'separator' });
+    }
+
+    sub.push({
+      label: 'Sync Now',
+      click: () => syncAccount(account.id, onStatus),
+    });
+
+    sub.push({ type: 'separator' });
+
+    // Vault section
+    sub.push({
+      label: vaultPath ? `Vault: ${shortenPath(vaultPath)}` : 'Vault: (default)',
+      enabled: false,
+    });
+    sub.push({
+      label: 'Set Vault Path...',
+      click: async () => {
+        if (process.platform === 'darwin') app.dock?.show();
+        try {
+          const focusWin = new BrowserWindow({ show: false });
+          const result = await dialog.showOpenDialog(focusWin, {
+            properties: ['openDirectory'],
+            title: `Select vault for ${displayName}: ${label}`,
+          });
+          focusWin.destroy();
+          if (!result.canceled && result.filePaths.length > 0) {
+            updateAccount(account.id, { vaultPath: result.filePaths[0] });
+            buildMenu();
+          }
+        } finally {
+          if (process.platform === 'darwin') app.dock?.hide();
+        }
+      },
+    });
+    sub.push({
+      label: 'Use Default Vault',
+      enabled: !!account.vaultPath,
+      click: () => {
+        updateAccount(account.id, { vaultPath: '' });
+        buildMenu();
+      },
+    });
+    sub.push({
+      label: vaultPath ? 'Open Vault' : 'Open Vault (not set)',
+      enabled: !!vaultPath,
+      click: () => shell.openPath(vaultPath),
+    });
+
+    sub.push({ type: 'separator' });
+
+    // Auto-sync toggle
+    sub.push({
+      label: `Auto-sync: ${account.autoSync ? '☑ ON' : '☐ OFF'}`,
+      click: () => {
+        updateAccount(account.id, { autoSync: !account.autoSync });
+        buildMenu();
+      },
+    });
+
+    sub.push({ type: 'separator' });
+
+    // Recent sync log (last 5 entries)
+    const recentLogs = getRecentLogs(account.id, 5);
+    if (recentLogs.length > 0) {
+      sub.push({ label: 'Recent Activity', enabled: false });
+      for (const log of recentLogs.reverse()) {
+        const time = new Date(log.time).toLocaleString([], {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        });
+        const icon = log.level === 'error' ? '✗' : '✓';
+        // Truncate long messages for menu display
+        const msg = log.message.length > 50 ? log.message.slice(0, 47) + '...' : log.message;
+        sub.push({ label: `  ${icon} ${time}: ${msg}`, enabled: false });
+      }
+      sub.push({
+        label: 'Open Full Log...',
+        click: () => openLogFile(account.id),
+      });
+      sub.push({ type: 'separator' });
+    }
+
+    // Account actions
+    sub.push({
+      label: 'Re-login',
+      click: async () => {
+        await openLoginWindow(account.provider, account.id).catch(() => {});
+        const prov = getProvider(account.provider);
+        if (prov) {
+          try {
+            const ses = getSession(account.id);
+            const info = await prov.getAccountInfo(ses);
+            if (info) {
+              upsertAccount({ ...account, ...info, status: 'ok', lastError: null });
+              buildMenu();
+            }
+          } catch { /* ignore */ }
+        }
+      },
+    });
+    sub.push({
+      label: 'Remove Account',
+      click: () => {
+        removeAccount(account.id);
+        buildMenu();
+      },
+    });
+
     return {
       label: `${displayName}: ${label}${plan} (${lastSync})${statusIcon}`,
-      submenu: [
-        {
-          label: 'Sync Now',
-          click: () => syncAccount(account.id, onStatus),
-        },
-        { type: 'separator' },
-        {
-          label: vaultPath ? `Vault: ${shortenPath(vaultPath)}` : 'Vault: (default)',
-          enabled: false,
-        },
-        {
-          label: 'Set Vault Path...',
-          click: async () => {
-            if (process.platform === 'darwin') app.dock?.show();
-            try {
-              const focusWin = new BrowserWindow({ show: false });
-              const result = await dialog.showOpenDialog(focusWin, {
-                properties: ['openDirectory'],
-                title: `Select vault for ${displayName}: ${label}`,
-              });
-              focusWin.destroy();
-              if (!result.canceled && result.filePaths.length > 0) {
-                updateAccount(account.id, { vaultPath: result.filePaths[0] });
-                buildMenu();
-              }
-            } finally {
-              if (process.platform === 'darwin') app.dock?.hide();
-            }
-          },
-        },
-        {
-          label: 'Use Default Vault',
-          enabled: !!account.vaultPath,
-          click: () => {
-            updateAccount(account.id, { vaultPath: '' });
-            buildMenu();
-          },
-        },
-        {
-          label: vaultPath ? 'Open Vault' : 'Open Vault (not set)',
-          enabled: !!vaultPath,
-          click: () => shell.openPath(vaultPath),
-        },
-        { type: 'separator' },
-        {
-          label: `Auto-sync: ${account.autoSync ? '☑ ON' : '☐ OFF'}`,
-          click: () => {
-            updateAccount(account.id, { autoSync: !account.autoSync });
-            buildMenu();
-          },
-        },
-        { type: 'separator' },
-        {
-          label: 'Re-login',
-          click: async () => {
-            await openLoginWindow(account.provider, account.id).catch(() => {});
-            const prov = getProvider(account.provider);
-            if (prov) {
-              try {
-                const ses = getSession(account.id);
-                const info = await prov.getAccountInfo(ses);
-                if (info) {
-                  upsertAccount({ ...account, ...info, status: 'ok' });
-                  buildMenu();
-                }
-              } catch { /* ignore */ }
-            }
-          },
-        },
-        {
-          label: 'Remove Account',
-          click: () => {
-            removeAccount(account.id);
-            buildMenu();
-          },
-        },
-      ],
+      submenu: sub,
     };
   });
 

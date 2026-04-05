@@ -81,6 +81,7 @@ const provider = {
     const limit = 100;
 
     while (true) {
+      await new Promise((r) => setTimeout(r, 1000));
       const page = await makeRequest(
         `${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`,
         ses,
@@ -88,6 +89,7 @@ const provider = {
       );
       const items = page?.items || [];
       allConvs = allConvs.concat(items);
+      console.log(`[openai] Listed ${allConvs.length} conversations so far...`);
       if (items.length < limit) break;
       offset += limit;
     }
@@ -100,20 +102,38 @@ const provider = {
     console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
     const updated = [];
 
+    let delay = 1000; // Start with 1s between requests
     for (let i = 0; i < toFetch.length; i++) {
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
-      await new Promise((r) => setTimeout(r, 500));
-      try {
-        const full = await makeRequest(
-          `${BASE}/backend-api/conversation/${conv.id}`,
-          ses,
-          { 'Authorization': `Bearer ${token}` }
-        );
-        updated.push(full);
-        timestamps[conv.id] = conv.update_time;
-      } catch (e) {
-        console.error(`[openai] Failed ${conv.id}: ${e.message}`);
+      await new Promise((r) => setTimeout(r, delay));
+
+      let retries = 0;
+      const maxRetries = 5;
+      while (retries <= maxRetries) {
+        try {
+          const full = await makeRequest(
+            `${BASE}/backend-api/conversation/${conv.id}`,
+            ses,
+            { 'Authorization': `Bearer ${token}` }
+          );
+          updated.push(full);
+          timestamps[conv.id] = conv.update_time;
+          // Success — ease back to normal delay
+          delay = Math.max(1000, delay * 0.9);
+          break;
+        } catch (e) {
+          if (e.message.includes('429') && retries < maxRetries) {
+            retries++;
+            const backoff = Math.min(60000, 2000 * Math.pow(2, retries)); // 4s, 8s, 16s, 32s, 60s
+            console.log(`[openai] Rate limited on ${conv.id}, retry ${retries}/${maxRetries} in ${backoff/1000}s`);
+            delay = Math.min(5000, delay * 1.5); // Slow down future requests too
+            await new Promise((r) => setTimeout(r, backoff));
+          } else {
+            console.error(`[openai] Failed ${conv.id}: ${e.message}`);
+            break;
+          }
+        }
       }
     }
     return updated;

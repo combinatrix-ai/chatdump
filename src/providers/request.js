@@ -1,17 +1,26 @@
 const { net } = require('electron');
 
-function makeRequest(url, ses) {
+async function makeRequest(url, ses, extraHeaders) {
+  // Manually attach cookies from session to work around Electron session isolation quirks
+  let cookieHeader = '';
+  if (ses) {
+    const cookies = await ses.cookies.get({ url });
+    cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  }
+
   return new Promise((resolve, reject) => {
-    const options = { url };
-    if (ses) {
-      options.session = ses;
-    } else {
-      options.useSessionCookies = true;
-    }
+    const options = { url, useSessionCookies: !ses };
+    if (ses) options.session = ses;
 
     const req = net.request(options);
     req.setHeader('Accept', 'application/json');
     req.setHeader('Content-Type', 'application/json');
+    if (cookieHeader) req.setHeader('Cookie', cookieHeader);
+    if (extraHeaders) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        req.setHeader(k, v);
+      }
+    }
 
     let body = '';
     req.on('response', (response) => {
@@ -35,16 +44,19 @@ function makeRequest(url, ses) {
 }
 
 // Returns raw HTML (for Gemini page scraping)
-function makeRawRequest(url, ses) {
+async function makeRawRequest(url, ses) {
+  let cookieHeader = '';
+  if (ses) {
+    const cookies = await ses.cookies.get({ url });
+    cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  }
+
   return new Promise((resolve, reject) => {
-    const options = { url };
-    if (ses) {
-      options.session = ses;
-    } else {
-      options.useSessionCookies = true;
-    }
+    const options = { url, useSessionCookies: !ses };
+    if (ses) options.session = ses;
 
     const req = net.request(options);
+    if (cookieHeader) req.setHeader('Cookie', cookieHeader);
     let body = '';
     req.on('response', (response) => {
       if (response.statusCode === 401 || response.statusCode === 403) {

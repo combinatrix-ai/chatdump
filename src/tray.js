@@ -153,42 +153,100 @@ function buildMenu() {
     label: prov.displayName,
     click: async () => {
       try {
-        // Login with a temp session first
         const result = await openLoginWindow(prov.name);
         const tempSes = result.session;
 
-        // Get account info using the temp session
-        const info = await prov.getAccountInfo(tempSes);
-        if (info && info.email) {
-          const accountId = `${prov.name}:${info.email}`;
+        // Step 1: Create account entry immediately with a temp ID
+        // Use timestamp to ensure uniqueness, will be updated with email later
+        const tempId = `${prov.name}:account-${Date.now()}`;
+        let accountId = tempId;
 
-          // Copy cookies from temp session to the account's persistent session
-          const persistSes = getSession(accountId);
-          const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
-          for (const cookie of cookies) {
-            const cookieDetails = {
-              url: prov.baseUrl,
+        // Step 2: Copy cookies from temp session to persistent session
+        const persistSes = getSession(accountId);
+        const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
+        console.log(`[tray] Copying ${cookies.length} cookies to ${accountId}`);
+        for (const cookie of cookies) {
+          try {
+            await persistSes.cookies.set({
+              url: `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`,
               name: cookie.name,
               value: cookie.value,
-              domain: cookie.domain,
-              path: cookie.path,
               secure: cookie.secure,
               httpOnly: cookie.httpOnly,
               expirationDate: cookie.expirationDate,
-            };
-            await persistSes.cookies.set(cookieDetails).catch(() => {});
+            });
+          } catch (e) {
+            console.log(`[tray] Cookie copy failed: ${cookie.name}: ${e.message}`);
+          }
+        }
+
+        // Step 3: Save account entry right away so it appears in the menu
+        upsertAccount({
+          id: accountId,
+          provider: prov.name,
+          email: '',
+          name: `${prov.displayName} account`,
+          plan: '',
+          status: 'ok',
+        });
+        buildMenu();
+
+        // Step 4: Try to get account info — multiple strategies
+        let info = null;
+        try {
+          // Strategy 1: Parse from API response fetched via browser
+          if (result.accountInfo && prov.parseAccountInfo) {
+            info = prov.parseAccountInfo(result.accountInfo);
+          }
+          // Strategy 2: Parse from cookies directly
+          console.log(`[tray] result.cookies keys: ${Object.keys(result.cookies || {}).join(', ')}`);
+          if ((!info || !info.email) && result.cookies && prov.parseAccountFromCookies) {
+            const cookieInfo = prov.parseAccountFromCookies(result.cookies);
+            if (cookieInfo.email || cookieInfo.name) {
+              info = { ...info, ...cookieInfo };
+            }
+          }
+          // Strategy 3: API call with session
+          if (!info || !info.email) {
+            const apiInfo = await prov.getAccountInfo(persistSes);
+            if (apiInfo) info = { ...info, ...apiInfo };
+          }
+        } catch { /* ignore */ }
+
+        if (info && info.email) {
+          const realId = `${prov.name}:${info.email}`;
+          // Remove temp entry, create proper one
+          removeAccount(accountId);
+
+          // Re-copy cookies to the real account partition
+          const realSes = getSession(realId);
+          for (const cookie of cookies) {
+            try {
+              await realSes.cookies.set({
+                url: `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`,
+                name: cookie.name,
+                value: cookie.value,
+                secure: cookie.secure,
+                httpOnly: cookie.httpOnly,
+                expirationDate: cookie.expirationDate,
+              });
+            } catch { /* ignore */ }
           }
 
           upsertAccount({
-            id: accountId,
+            id: realId,
             provider: prov.name,
             email: info.email,
             name: info.name,
             plan: info.plan,
             status: 'ok',
           });
-          buildMenu();
+        } else if (info && info.name) {
+          // Got name but no email — update the temp entry
+          updateAccount(accountId, { name: info.name, plan: info.plan || '' });
         }
+
+        buildMenu();
       } catch (e) {
         console.error(`Add account failed: ${e.message}`);
       }

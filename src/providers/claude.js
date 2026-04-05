@@ -9,6 +9,18 @@ const provider = {
   loginUrl: `${BASE}/login`,
   subdir: 'claude',
   cookieName: 'sessionKey',
+  meEndpoint: `${BASE}/api/bootstrap`,
+
+  parseAccountInfo(bootstrap) {
+    const email = bootstrap?.account?.email_address || '';
+    const name = bootstrap?.account?.display_name || bootstrap?.account?.full_name || '';
+    const orgs = bootstrap?.account?.memberships?.map((m) => m.organization) || [];
+    const org = orgs[0] || {};
+    const plan = org.capabilities?.includes('claude_max') ? 'Max'
+      : org.capabilities?.includes('claude_pro') ? 'Pro'
+      : 'Free';
+    return { email, name, plan, orgId: org.uuid };
+  },
 
   async getAccountInfo(ses) {
     const orgs = await makeRequest(`${BASE}/api/organizations`, ses);

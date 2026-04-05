@@ -9,29 +9,83 @@ const provider = {
   loginUrl: `${BASE}/auth/login`,
   subdir: 'chatgpt',
   cookieName: '__Secure-next-auth.session-token',
+  cookiePrefix: true,
+  meEndpoint: null, // We use cookies + /api/auth/session instead
+
+  // Extract account info from cookies (primary method)
+  parseAccountFromCookies(cookies) {
+    let email = '';
+    let name = cookies['oai-gn'] ? decodeURIComponent(cookies['oai-gn']) : '';
+    let plan = '';
+
+    if (cookies['oai-client-auth-info']) {
+      try {
+        const decoded = decodeURIComponent(cookies['oai-client-auth-info']);
+        const authInfo = JSON.parse(decoded);
+        email = authInfo?.user?.email || '';
+        name = name || authInfo?.user?.name || '';
+      } catch (e) {
+        console.log('[openai] Failed to parse oai-client-auth-info:', e.message);
+      }
+    }
+
+    if (!email && cookies['_puid']) {
+      email = cookies['_puid'].split(':')[0]; // user-xxx:timestamp-hash
+    }
+
+    return { email, name, plan };
+  },
+
+  parseAccountInfo(data) {
+    // Not used — we use parseAccountFromCookies
+    return null;
+  },
 
   async getAccountInfo(ses) {
+    // Try to get access token from /api/auth/session, then hit /backend-api/me
     try {
-      const me = await makeRequest(`${BASE}/backend-api/me`, ses);
-      return {
-        email: me?.email || '',
-        name: me?.name || '',
-        plan: me?.entitlement?.subscription_plan === 'chatgptplusplan' ? 'Plus'
-          : me?.entitlement?.subscription_plan === 'chatgptteamplan' ? 'Team'
-          : 'Free',
-      };
+      const authSession = await makeRequest(`${BASE}/api/auth/session`, ses);
+      const email = authSession?.user?.email || '';
+      const name = authSession?.user?.name || '';
+      const plan = authSession?.account?.planType || '';
+      const planLabel = plan === 'pro' ? 'Pro'
+        : plan === 'plus' ? 'Plus'
+        : plan === 'team' ? 'Team'
+        : plan || 'Free';
+
+      return { email, name, plan: planLabel };
+    } catch (e) {
+      console.error('[openai] getAccountInfo error:', e.message);
+      return null;
+    }
+  },
+
+  // Get access token needed for /backend-api/* calls
+  async getAccessToken(ses) {
+    try {
+      const authSession = await makeRequest(`${BASE}/api/auth/session`, ses);
+      return authSession?.accessToken || null;
     } catch {
       return null;
     }
   },
 
   async fetchConversations(ses, timestamps, onProgress) {
+    const token = await provider.getAccessToken(ses);
+    if (!token) {
+      throw new Error('AUTH_EXPIRED');
+    }
+
     let allConvs = [];
     let offset = 0;
     const limit = 100;
 
     while (true) {
-      const page = await makeRequest(`${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`, ses);
+      const page = await makeRequest(
+        `${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`,
+        ses,
+        { 'Authorization': `Bearer ${token}` }
+      );
       const items = page?.items || [];
       allConvs = allConvs.concat(items);
       if (items.length < limit) break;
@@ -51,7 +105,11 @@ const provider = {
       onProgress?.(i + 1, toFetch.length);
       await new Promise((r) => setTimeout(r, 500));
       try {
-        const full = await makeRequest(`${BASE}/backend-api/conversation/${conv.id}`, ses);
+        const full = await makeRequest(
+          `${BASE}/backend-api/conversation/${conv.id}`,
+          ses,
+          { 'Authorization': `Bearer ${token}` }
+        );
         updated.push(full);
         timestamps[conv.id] = conv.update_time;
       } catch (e) {

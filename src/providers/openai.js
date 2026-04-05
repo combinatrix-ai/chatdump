@@ -79,6 +79,7 @@ const provider = {
     let allConvs = [];
     let offset = 0;
     const limit = 100;
+    let total = '?';
 
     while (true) {
       await new Promise((r) => setTimeout(r, 1000));
@@ -88,8 +89,10 @@ const provider = {
         { 'Authorization': `Bearer ${token}` }
       );
       const items = page?.items || [];
+      if (page?.total != null) total = page.total;
       allConvs = allConvs.concat(items);
-      console.log(`[openai] Listed ${allConvs.length} conversations so far...`);
+      onProgress?.(-1, total, `Listing ${allConvs.length}/${total}`);
+      console.log(`[openai] Listed ${allConvs.length}/${total} conversations`);
       if (items.length < limit) break;
       offset += limit;
     }

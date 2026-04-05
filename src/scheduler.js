@@ -78,9 +78,12 @@ async function syncAccount(accountId, onStatus) {
       }
     };
 
-    const conversations = await provider.fetchConversations(ses, timestamps, (current, total) => {
+    const conversations = await provider.fetchConversations(ses, timestamps, (current, total, customMsg) => {
       totalConvs = total;
-      onStatus?.('syncing', `${provider.displayName}: ${current}/${total} (${written} written)`, accountId);
+      const statusMsg = customMsg
+        ? `${provider.displayName}: ${customMsg}`
+        : `${provider.displayName}: ${current}/${total} (${written} written)`;
+      onStatus?.('syncing', statusMsg, accountId);
       saveCounter++;
       if (saveCounter % 25 === 0) {
         updateAccount(accountId, { timestamps, lastSyncedAt: new Date().toISOString() });

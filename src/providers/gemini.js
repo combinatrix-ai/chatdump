@@ -35,7 +35,7 @@ const provider = {
     }
   },
 
-  async fetchConversations(ses, timestamps, onProgress) {
+  async fetchConversations(ses, timestamps, onProgress, onConversation) {
     // Step 1: Get tokens from the app page
     const tokens = await getPageTokens(ses);
     if (!tokens.at) {
@@ -81,18 +81,19 @@ const provider = {
         const msgPayload = JSON.stringify([conv.id, 50, null, 1, [1], [4], null, 1]);
         const msgResp = await batchExecute(ses, tokens, 'hNvQHb', msgPayload);
         const messages = parseConversationMessages(msgResp);
-        updated.push({
+        const full = {
           id: conv.id,
           title: conv.title,
           timestamp: conv.timestamp,
           messages,
-        });
+        };
+        onConversation?.(full);
         timestamps[conv.id] = conv.timestamp;
       } catch (e) {
         console.error(`[gemini] Failed ${conv.id}: ${e.message}`);
       }
     }
-    return updated;
+    return [];
   },
 
   convertToMarkdown(conversation) {

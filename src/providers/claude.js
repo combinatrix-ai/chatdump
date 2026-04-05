@@ -41,7 +41,7 @@ const provider = {
     return { email, name, plan, orgId: org.uuid };
   },
 
-  async fetchConversations(ses, timestamps, onProgress) {
+  async fetchConversations(ses, timestamps, onProgress, onConversation) {
     const orgs = await makeRequest(`${BASE}/api/organizations`, ses);
     if (!orgs || orgs.length === 0) return [];
     const orgId = orgs[0].uuid;
@@ -61,13 +61,13 @@ const provider = {
       await new Promise((r) => setTimeout(r, 500));
       try {
         const full = await makeRequest(`${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`, ses);
-        updated.push(full);
+        onConversation?.(full);
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {
         console.error(`[claude] Failed ${conv.uuid}: ${e.message}`);
       }
     }
-    return updated;
+    return [];
   },
 
   convertToMarkdown(conversation) {

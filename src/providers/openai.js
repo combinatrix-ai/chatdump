@@ -70,8 +70,8 @@ const provider = {
     }
   },
 
-  async fetchConversations(ses, timestamps, onProgress) {
-    const token = await provider.getAccessToken(ses);
+  async fetchConversations(ses, timestamps, onProgress, onConversation) {
+    let token = await provider.getAccessToken(ses);
     if (!token) {
       throw new Error('AUTH_EXPIRED');
     }
@@ -102,32 +102,44 @@ const provider = {
     console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
     const updated = [];
 
-    let delay = 1000; // Start with 1s between requests
+    let delay = 5000; // 5s between requests — ChatGPT rate limits aggressively
+    let consecutiveFails = 0;
+
     for (let i = 0; i < toFetch.length; i++) {
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
+
+      // If token might be expired (>5min), refresh it
+      if (i > 0 && i % 100 === 0) {
+        try {
+          const newToken = await provider.getAccessToken(ses);
+          if (newToken) token = newToken;
+          console.log(`[openai] Refreshed access token at item ${i}`);
+        } catch { /* keep old token */ }
+      }
+
       await new Promise((r) => setTimeout(r, delay));
 
-      let retries = 0;
-      const maxRetries = 5;
-      while (retries <= maxRetries) {
+      let success = false;
+      for (let retries = 0; retries < 5; retries++) {
         try {
           const full = await makeRequest(
             `${BASE}/backend-api/conversation/${conv.id}`,
             ses,
             { 'Authorization': `Bearer ${token}` }
           );
-          updated.push(full);
+          onConversation?.(full);
           timestamps[conv.id] = conv.update_time;
-          // Success — ease back to normal delay
-          delay = Math.max(1000, delay * 0.9);
+          success = true;
+          consecutiveFails = 0;
+          delay = Math.max(3000, delay * 0.95); // Slowly ease back
           break;
         } catch (e) {
-          if (e.message.includes('429') && retries < maxRetries) {
-            retries++;
-            const backoff = Math.min(60000, 2000 * Math.pow(2, retries)); // 4s, 8s, 16s, 32s, 60s
-            console.log(`[openai] Rate limited on ${conv.id}, retry ${retries}/${maxRetries} in ${backoff/1000}s`);
-            delay = Math.min(5000, delay * 1.5); // Slow down future requests too
+          if (e.message.includes('429')) {
+            consecutiveFails++;
+            const backoff = Math.min(120000, 5000 * Math.pow(2, retries)); // 10s, 20s, 40s, 80s, 120s
+            console.log(`[openai] 429 on ${i+1}/${toFetch.length}, backoff ${backoff/1000}s (attempt ${retries+1}/5)`);
+            delay = Math.min(15000, delay + 2000); // Progressively slow down
             await new Promise((r) => setTimeout(r, backoff));
           } else {
             console.error(`[openai] Failed ${conv.id}: ${e.message}`);
@@ -135,8 +147,26 @@ const provider = {
           }
         }
       }
+
+      // Log progress periodically
+      if (success && updated.length % 50 === 0) {
+        console.log(`[openai] Progress: ${updated.length} fetched, ${i+1}/${toFetch.length} processed, delay=${delay/1000}s`);
+      }
+
+      // If too many consecutive fails, pause longer
+      if (consecutiveFails >= 10) {
+        console.log(`[openai] ${consecutiveFails} consecutive 429s, pausing 5 minutes...`);
+        await new Promise((r) => setTimeout(r, 300000));
+        consecutiveFails = 0;
+        delay = 5000;
+        // Refresh token after long pause
+        try {
+          const newToken = await provider.getAccessToken(ses);
+          if (newToken) token = newToken;
+        } catch { /* keep old */ }
+      }
     }
-    return updated;
+    return []; // Conversations already written via onConversation callback
   },
 
   convertToMarkdown(conversation) {

@@ -61,23 +61,42 @@ async function syncAccount(accountId, onStatus) {
     const timestamps = account.timestamps || {};
     let totalConvs = 0;
 
+    let written = 0;
+    let fetched = 0;
+    let saveCounter = 0;
+
+    // onConversation callback: write each conversation immediately as it's fetched
+    const onConversation = (conv) => {
+      fetched++;
+      try {
+        const md = provider.convertToMarkdown(conv);
+        const filename = provider.makeFilename(conv);
+        const changed = writeConversation(vaultPath, provider.subdir, account.email, filename, md);
+        if (changed) written++;
+      } catch (e) {
+        console.error(`[${account.provider}] Write error:`, e.message);
+      }
+    };
+
     const conversations = await provider.fetchConversations(ses, timestamps, (current, total) => {
       totalConvs = total;
-      onStatus?.('syncing', `${provider.displayName}: ${current}/${total}`, accountId);
-    });
+      onStatus?.('syncing', `${provider.displayName}: ${current}/${total} (${written} written)`, accountId);
+      saveCounter++;
+      if (saveCounter % 25 === 0) {
+        updateAccount(accountId, { timestamps, lastSyncedAt: new Date().toISOString() });
+        onMenuRefresh?.();
+      }
+    }, onConversation);
 
-    let written = 0;
+    // Write any remaining conversations returned as array (for providers that don't use onConversation)
     for (const conv of conversations) {
-      const md = provider.convertToMarkdown(conv);
-      const filename = provider.makeFilename(conv);
-      const changed = writeConversation(vaultPath, provider.subdir, account.email, filename, md);
-      if (changed) written++;
+      onConversation(conv);
     }
 
     const now = new Date().toISOString();
     const msg = written > 0
-      ? `Synced ${written} new/updated files (${conversations.length} fetched)`
-      : `Up to date (${totalConvs || 0} conversations checked)`;
+      ? `Synced ${written} files (${fetched} fetched)`
+      : `Up to date (${totalConvs || 0} checked)`;
 
     appendLog(accountId, { level: 'info', message: msg, written, fetched: conversations.length });
     updateAccount(accountId, {

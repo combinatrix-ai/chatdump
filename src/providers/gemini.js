@@ -273,12 +273,26 @@ function parseConversationMessages(raw) {
           }
         } catch { /* skip */ }
 
-        // Model response at [3][0] (candidates)
+        // Model response — try multiple paths since structure varies
         try {
-          const candidates = turn?.[3] || [];
-          if (candidates.length > 0) {
-            const firstCandidate = candidates[0];
-            const text = firstCandidate?.[1]?.[0] || '';
+          const responsePart = turn?.[3];
+          if (responsePart && responsePart.length > 0) {
+            const firstCandidate = responsePart[0];
+            // Path 1: [3][0][0][1][0] — candidate rcid + text array
+            let text = '';
+            if (Array.isArray(firstCandidate?.[0])) {
+              // firstCandidate[0] = ["rc_xxx", ["text content"], ...]
+              const textArr = firstCandidate[0]?.[1];
+              if (Array.isArray(textArr)) {
+                text = textArr.filter(t => typeof t === 'string').join('\n\n');
+              } else if (typeof textArr === 'string') {
+                text = textArr;
+              }
+            }
+            // Path 2: [3][0][1][0] — direct text
+            if (!text && firstCandidate?.[1]?.[0]) {
+              text = typeof firstCandidate[1][0] === 'string' ? firstCandidate[1][0] : '';
+            }
             if (text) {
               messages.push({ role: 'model', text });
             }

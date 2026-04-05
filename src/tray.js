@@ -1,7 +1,7 @@
 const { app, shell, Tray, Menu, nativeImage, dialog, BrowserWindow } = require('electron');
 const path = require('path');
 const { store, getAccounts, upsertAccount, removeAccount, updateAccount, getVaultPath } = require('./store');
-const { syncAccount, syncAll } = require('./scheduler');
+const { syncAccount, syncAll, isSyncing } = require('./scheduler');
 const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
@@ -37,8 +37,10 @@ function buildMenu() {
       sub.push({ type: 'separator' });
     }
 
+    const syncing = isSyncing(account.id);
     sub.push({
-      label: 'Sync Now',
+      label: syncing ? 'Syncing...' : 'Sync Now',
+      enabled: !syncing,
       click: () => syncAccount(account.id, onStatus),
     });
 

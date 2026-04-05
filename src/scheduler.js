@@ -6,17 +6,29 @@ const { appendLog } = require('./synclog');
 
 let intervalId = null;
 let onMenuRefresh = null;
+const syncingAccounts = new Set();
 
 function setMenuRefreshCallback(cb) {
   onMenuRefresh = cb;
 }
 
+function isSyncing(accountId) {
+  return syncingAccounts.has(accountId);
+}
+
 async function syncAccount(accountId, onStatus) {
+  if (syncingAccounts.has(accountId)) {
+    console.log(`[sync] ${accountId} already syncing, skipping`);
+    return;
+  }
+
   const account = getAccount(accountId);
   if (!account) return;
 
   const provider = getProvider(account.provider);
   if (!provider) return;
+
+  syncingAccounts.add(accountId);
 
   const vaultPath = getVaultPath(accountId);
   if (!vaultPath) {
@@ -88,6 +100,8 @@ async function syncAccount(accountId, onStatus) {
     }
     appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
     onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
+  } finally {
+    syncingAccounts.delete(accountId);
   }
 
   onMenuRefresh?.();
@@ -114,4 +128,4 @@ function stopScheduler() {
   }
 }
 
-module.exports = { syncAccount, syncAll, startScheduler, stopScheduler, setMenuRefreshCallback };
+module.exports = { syncAccount, syncAll, startScheduler, stopScheduler, setMenuRefreshCallback, isSyncing };

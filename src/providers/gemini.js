@@ -2,6 +2,7 @@ const { net } = require('electron');
 const { makeRawRequest } = require('./request');
 
 const BASE = 'https://gemini.google.com';
+const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
 
 const provider = {
   name: 'gemini',
@@ -11,58 +12,333 @@ const provider = {
   subdir: 'gemini',
   cookieName: '__Secure-1PSID',
 
+  // Extract account info from cookies
+  parseAccountFromCookies(cookies) {
+    // No reliable email in cookies for Gemini — will be filled from page HTML
+    return { email: '', name: '', plan: '' };
+  },
+
+  parseAccountInfo() { return null; },
+
   async getAccountInfo(ses) {
+    // Fetch the app page and extract email from HTML
     try {
       const html = await makeRawRequest(`${BASE}/app`, ses);
-      const emailMatch = html.match(/"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})"/);
-      return {
-        email: emailMatch ? emailMatch[1] : '',
-        name: '',
-        plan: 'Free',
-      };
-    } catch {
+      const emails = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+      const email = emails.find(e => !e.includes('google.com') && !e.includes('googlers')) || emails[0] || '';
+      // Check for Pro/Advanced subscription
+      const isPro = html.includes('"PRO"') || html.includes('"gemini_advanced"');
+      return { email, name: '', plan: isPro ? 'Pro' : 'Free' };
+    } catch (e) {
+      console.error('[gemini] getAccountInfo error:', e.message);
       return null;
     }
   },
 
   async fetchConversations(ses, timestamps, onProgress) {
-    // Gemini's internal API uses protobuf-like RPC, not yet reverse-engineered
-    console.log('[gemini] Conversation fetch not yet fully implemented');
-    return [];
+    // Step 1: Get tokens from the app page
+    const tokens = await getPageTokens(ses);
+    if (!tokens.at) {
+      throw new Error('AUTH_EXPIRED');
+    }
+
+    // Step 2: Fetch conversation list via MaZiqc RPC
+    const listPayload = JSON.stringify([13, null, [0, null, 1]]);
+    const listResp = await batchExecute(ses, tokens, 'MaZiqc', listPayload);
+    const conversations = parseConversationList(listResp);
+
+    console.log(`[gemini] Found ${conversations.length} conversations`);
+
+    // Also fetch pinned conversations
+    try {
+      const pinnedPayload = JSON.stringify([13, null, [1, null, 1]]);
+      const pinnedResp = await batchExecute(ses, tokens, 'MaZiqc', pinnedPayload);
+      const pinned = parseConversationList(pinnedResp);
+      // Merge, avoiding duplicates
+      const existingIds = new Set(conversations.map(c => c.id));
+      for (const p of pinned) {
+        if (!existingIds.has(p.id)) {
+          conversations.push(p);
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Step 3: Filter to updated conversations
+    const toFetch = conversations.filter((c) => {
+      const last = timestamps[c.id];
+      return !last || last !== c.timestamp;
+    });
+
+    console.log(`[gemini] ${toFetch.length}/${conversations.length} to fetch`);
+    const updated = [];
+
+    // Step 4: Fetch each conversation's messages
+    for (let i = 0; i < toFetch.length; i++) {
+      const conv = toFetch[i];
+      onProgress?.(i + 1, toFetch.length);
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        const msgPayload = JSON.stringify([conv.id, 50, null, 1, [1], [4], null, 1]);
+        const msgResp = await batchExecute(ses, tokens, 'hNvQHb', msgPayload);
+        const messages = parseConversationMessages(msgResp);
+        updated.push({
+          id: conv.id,
+          title: conv.title,
+          timestamp: conv.timestamp,
+          messages,
+        });
+        timestamps[conv.id] = conv.timestamp;
+      } catch (e) {
+        console.error(`[gemini] Failed ${conv.id}: ${e.message}`);
+      }
+    }
+    return updated;
   },
 
   convertToMarkdown(conversation) {
     const title = conversation.title || 'Untitled';
-    const created = conversation.created || '';
-    const updated = conversation.updated || '';
+    const ts = conversation.timestamp;
+    const created = ts ? new Date(ts).toISOString() : '';
     const id = conversation.id || '';
 
     const frontmatter = [
       '---',
       `title: "${title.replace(/"/g, '\\"')}"`,
       `created: ${created}`,
-      `updated: ${updated}`,
       'source: gemini',
       `conversation_id: "${id}"`,
       '---',
     ].filter(Boolean).join('\n');
 
-    const messages = (conversation.messages || [])
+    const body = (conversation.messages || [])
       .map((msg) => {
         const role = msg.role === 'user' ? 'User' : 'Assistant';
-        return `## ${role}\n\n${msg.text || ''}`;
+        return `## ${role}\n\n${msg.text}`;
       })
+      .filter(Boolean)
       .join('\n\n');
 
-    return `${frontmatter}\n\n${messages}\n`;
+    return `${frontmatter}\n\n${body}\n`;
   },
 
   makeFilename(conversation) {
-    const date = (conversation.created || new Date().toISOString()).slice(0, 10);
+    const ts = conversation.timestamp;
+    const date = ts ? new Date(ts).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
     const title = sanitize(conversation.title || 'untitled');
     return `${date}_${title}.md`;
   },
 };
+
+// --- Helpers ---
+
+async function getPageTokens(ses) {
+  try {
+    const html = await makeRawRequest(`${BASE}/app`, ses);
+    const at = (html.match(/"SNlM0e":"([^"]+)"/) || [])[1] || '';
+    const bl = (html.match(/"cfb2h":"([^"]+)"/) || [])[1] || '';
+    const sid = (html.match(/"FdrFJe":"([^"]+)"/) || [])[1] || '';
+    return { at, bl, sid };
+  } catch (e) {
+    console.error('[gemini] Failed to get page tokens:', e.message);
+    return { at: '', bl: '', sid: '' };
+  }
+}
+
+async function batchExecute(ses, tokens, rpcId, payload) {
+  // Build form body
+  const formBody = new URLSearchParams();
+  formBody.set('f.req', JSON.stringify([[[rpcId, payload, null, 'generic']]]));
+  formBody.set('at', tokens.at);
+
+  // Build query string
+  const qs = new URLSearchParams({
+    rpcids: rpcId,
+    'source-path': '/app',
+    bl: tokens.bl,
+    'f.sid': tokens.sid,
+    hl: 'en',
+    _reqid: String(Math.floor(Math.random() * 1000000)),
+    rt: 'c',
+  });
+
+  const url = `${BATCH_EXEC}?${qs.toString()}`;
+
+  // Make POST request with cookies
+  let cookieHeader = '';
+  if (ses) {
+    // Need cookies from both .google.com and gemini.google.com
+    const cookies1 = await ses.cookies.get({ url: BASE });
+    const cookies2 = await ses.cookies.get({ url: 'https://google.com' });
+    const allCookies = [...cookies1, ...cookies2];
+    const seen = new Set();
+    const deduplicated = allCookies.filter(c => {
+      const key = `${c.name}=${c.value}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    cookieHeader = deduplicated.map(c => `${c.name}=${c.value}`).join('; ');
+  }
+
+  return new Promise((resolve, reject) => {
+    const options = { url, method: 'POST', useSessionCookies: true };
+    if (ses) options.session = ses;
+
+    const req = net.request(options);
+    req.setHeader('Content-Type', 'application/x-www-form-urlencoded;charset=utf-8');
+    req.setHeader('Origin', BASE);
+    req.setHeader('Referer', `${BASE}/`);
+    req.setHeader('X-Same-Domain', '1');
+    if (cookieHeader) req.setHeader('Cookie', cookieHeader);
+
+    let body = '';
+    req.on('response', (response) => {
+      if (response.statusCode === 401 || response.statusCode === 403) {
+        reject(new Error('AUTH_EXPIRED'));
+        return;
+      }
+      if (response.statusCode >= 400) {
+        reject(new Error(`API error: ${response.statusCode}`));
+        return;
+      }
+      response.on('data', (chunk) => { body += chunk.toString(); });
+      response.on('end', () => resolve(body));
+    });
+    req.on('error', reject);
+
+    req.write(formBody.toString());
+    req.end();
+  });
+}
+
+function parseConversationList(raw) {
+  // Response starts with )]}' followed by newlines — strip XSSI prefix
+  const xssiIdx = raw.indexOf('\n');
+  const cleaned = xssiIdx >= 0 ? raw.slice(xssiIdx) : raw;
+  const conversations = [];
+
+  try {
+    const frames = parseFrames(cleaned);
+    for (const frame of frames) {
+      if (!Array.isArray(frame)) continue;
+      if (frame[0] !== 'wrb.fr' || frame[1] !== 'MaZiqc') continue;
+
+      const dataStr = frame[2];
+      if (typeof dataStr !== 'string') continue;
+
+      const data = JSON.parse(dataStr);
+      // data = [null, "encryptedToken", [[conv1], [conv2], ...]]
+      // Find the first nested array that contains conversation arrays
+      let items = [];
+      for (const entry of data) {
+        if (Array.isArray(entry) && entry.length > 0 && Array.isArray(entry[0])) {
+          items = entry;
+          break;
+        }
+      }
+      for (const conv of items) {
+        if (!Array.isArray(conv)) continue;
+        const id = conv[0];
+        const title = conv[1] || '';
+        const ts = conv[5] ? conv[5][0] * 1000 : null;
+        if (id) {
+          conversations.push({ id, title, timestamp: ts });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[gemini] Failed to parse conversation list:', e.message);
+  }
+
+  return conversations;
+}
+
+function parseConversationMessages(raw) {
+  const cleaned = raw.replace(/^\)\]\}'\s*/, '');
+  const messages = [];
+
+  try {
+    const frames = parseFrames(cleaned);
+    for (const frame of frames) {
+      if (!Array.isArray(frame) || frame[0] !== 'wrb.fr' || frame[1] !== 'hNvQHb') continue;
+      const data = JSON.parse(frame[2]);
+      const turns = data[0] || [];
+
+      for (const turn of turns) {
+        // User message at [2][0][0]
+        try {
+          const userText = turn?.[2]?.[0]?.[0];
+          if (userText) {
+            messages.push({ role: 'user', text: userText });
+          }
+        } catch { /* skip */ }
+
+        // Model response at [3][0] (candidates)
+        try {
+          const candidates = turn?.[3] || [];
+          if (candidates.length > 0) {
+            const firstCandidate = candidates[0];
+            const text = firstCandidate?.[1]?.[0] || '';
+            if (text) {
+              messages.push({ role: 'model', text });
+            }
+          }
+        } catch { /* skip */ }
+      }
+    }
+  } catch (e) {
+    console.error('[gemini] Failed to parse messages:', e.message);
+  }
+
+  return messages;
+}
+
+function parseFrames(text) {
+  const frames = [];
+
+  // Find all top-level JSON arrays by looking for [[ patterns
+  // This is more robust than length-prefix parsing which has encoding issues
+  let pos = 0;
+  while (pos < text.length) {
+    const arrStart = text.indexOf('[[', pos);
+    if (arrStart === -1) break;
+
+    // Try to parse a JSON array starting here
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let end = arrStart;
+
+    for (let i = arrStart; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) { escaped = false; continue; }
+      if (ch === '\\') { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '[') depth++;
+      if (ch === ']') { depth--; if (depth === 0) { end = i + 1; break; } }
+    }
+
+    if (depth === 0 && end > arrStart) {
+      const jsonStr = text.slice(arrStart, end);
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (Array.isArray(item)) {
+              frames.push(item);
+            }
+          }
+        }
+      } catch { /* skip */ }
+      pos = end;
+    } else {
+      pos = arrStart + 2;
+    }
+  }
+
+  return frames;
+}
 
 function sanitize(name) {
   return name.replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 80);

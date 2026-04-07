@@ -87,6 +87,12 @@ async function syncAccount(accountId, onStatus) {
       saveCounter++;
       if (saveCounter % 25 === 0) {
         updateAccount(accountId, { timestamps, lastSyncedAt: new Date().toISOString() });
+        appendLog(accountId, {
+          level: 'info',
+          message: `In progress: ${written} written, ${current}/${total} processed`,
+          written,
+          fetched,
+        });
         onMenuRefresh?.();
       }
     }, onConversation);
@@ -101,7 +107,7 @@ async function syncAccount(accountId, onStatus) {
       ? `Synced ${written} files (${fetched} fetched)`
       : `Up to date (${totalConvs || 0} checked)`;
 
-    appendLog(accountId, { level: 'info', message: msg, written, fetched: conversations.length });
+    appendLog(accountId, { level: 'info', message: msg, written, fetched });
     updateAccount(accountId, {
       timestamps,
       lastSyncedAt: now,

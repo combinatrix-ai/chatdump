@@ -102,7 +102,8 @@ const provider = {
   makeFilename(conversation) {
     const date = (conversation.created_at || new Date().toISOString()).slice(0, 10);
     const title = sanitize(conversation.name || 'untitled');
-    return `${date}_${title}.md`;
+    const idSuffix = (conversation.uuid || '').slice(0, 8);
+    return `${date}_${title}_${idSuffix}.md`;
   },
 };
 

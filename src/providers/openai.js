@@ -208,7 +208,8 @@ const provider = {
       ? new Date(conversation.create_time * 1000).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
     const title = sanitize(conversation.title || 'untitled');
-    return `${created}_${title}.md`;
+    const idSuffix = (conversation.conversation_id || conversation.id || '').slice(0, 8);
+    return `${created}_${title}_${idSuffix}.md`;
   },
 };
 

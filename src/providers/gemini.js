@@ -126,7 +126,8 @@ const provider = {
     const ts = conversation.timestamp;
     const date = ts ? new Date(ts).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
     const title = sanitize(conversation.title || 'untitled');
-    return `${date}_${title}.md`;
+    const idSuffix = (conversation.id || '').replace('c_', '').slice(0, 8);
+    return `${date}_${title}_${idSuffix}.md`;
   },
 };
 

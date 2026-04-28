@@ -17,13 +17,19 @@ async function findAuthCookie(ses, prov) {
     const allCookies = await ses.cookies.get({ url: prov.baseUrl });
     const matched = allCookies
       .filter((c) => c.name.startsWith(prov.cookieName))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => getCookieChunkIndex(a.name) - getCookieChunkIndex(b.name));
     if (matched.length > 0) {
       return matched.map((c) => c.value).join('');
     }
   }
 
   return null;
+}
+
+function getCookieChunkIndex(name) {
+  const suffix = name.split('.').pop();
+  const index = Number.parseInt(suffix, 10);
+  return Number.isNaN(index) ? Number.MAX_SAFE_INTEGER : index;
 }
 
 async function getSessionCookie(providerName, accountId) {

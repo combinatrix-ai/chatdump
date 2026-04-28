@@ -189,6 +189,13 @@ function buildMenu() {
             const ses = getSession(account.id);
             const info = await prov.getAccountInfo(ses);
             if (info) {
+              if (account.email && info.email && info.email !== account.email) {
+                updateAccount(account.id, {
+                  lastError: `Logged in as ${info.email}; expected ${account.email}`,
+                });
+                buildMenu();
+                return;
+              }
               upsertAccount({ ...account, ...info, status: 'ok', lastError: null });
               buildMenu();
             }

@@ -30,6 +30,10 @@ function setProgress(accountId, text) {
   else accountProgress.delete(accountId);
 }
 
+function getConversationId(conv) {
+  return conv?.uuid || conv?.conversation_id || conv?.id || 'unknown';
+}
+
 async function syncAccount(accountId, onStatus) {
   if (syncingAccounts.has(accountId)) {
     console.log(`[sync] ${accountId} already syncing, skipping`);
@@ -82,6 +86,7 @@ async function syncAccount(accountId, onStatus) {
 
       let written = 0;
       let fetched = 0;
+      let failedWrites = 0;
       let saveCounter = 0;
 
       // onConversation callback: write each conversation immediately as it's fetched
@@ -99,7 +104,12 @@ async function syncAccount(accountId, onStatus) {
           );
           if (changed) written++;
         } catch (e) {
-          console.error(`[${account.provider}] Write error:`, e.message);
+          failedWrites++;
+          const convId = getConversationId(conv);
+          const msg = `Write failed for ${convId}: ${e.message}`;
+          appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
+          console.error(`[${account.provider}] ${msg}`);
+          throw e;
         }
       };
 
@@ -132,24 +142,35 @@ async function syncAccount(accountId, onStatus) {
 
       // Write any remaining conversations returned as array (for providers that don't use onConversation)
       for (const conv of conversations) {
-        onConversation(conv);
+        try {
+          onConversation(conv);
+        } catch {
+          // Already logged in onConversation; keep syncing the rest.
+        }
       }
 
       const now = new Date().toISOString();
-      const msg =
-        written > 0
+      const msg = failedWrites
+        ? `Partial sync: ${written} files (${failedWrites} failed, ${fetched} fetched)`
+        : written > 0
           ? `Synced ${written} files (${fetched} fetched)`
           : `Up to date (${totalConvs || 0} checked)`;
 
-      appendLog(accountId, { level: 'info', message: msg, written, fetched });
+      appendLog(accountId, {
+        level: failedWrites ? 'error' : 'info',
+        message: msg,
+        written,
+        fetched,
+        failedWrites,
+      });
       updateAccount(accountId, {
         timestamps,
         lastSyncedAt: now,
         status: 'ok',
-        lastError: null,
+        lastError: failedWrites ? `${failedWrites} conversation(s) failed to save` : null,
       });
 
-      onStatus?.('idle', `${provider.displayName}: ${msg}`, accountId);
+      onStatus?.(failedWrites ? 'error' : 'idle', `${provider.displayName}: ${msg}`, accountId);
     } catch (e) {
       let msg;
       if (e.message === 'AUTH_EXPIRED') {

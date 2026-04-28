@@ -228,21 +228,7 @@ function buildMenu() {
         // Step 2: Copy cookies from temp session to persistent session
         const persistSes = getSession(accountId);
         const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
-        console.log(`[tray] Copying ${cookies.length} cookies to ${accountId}`);
-        for (const cookie of cookies) {
-          try {
-            await persistSes.cookies.set({
-              url: `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`,
-              name: cookie.name,
-              value: cookie.value,
-              secure: cookie.secure,
-              httpOnly: cookie.httpOnly,
-              expirationDate: cookie.expirationDate,
-            });
-          } catch (e) {
-            console.log(`[tray] Cookie copy failed: ${cookie.name}: ${e.message}`);
-          }
-        }
+        await copyProviderCookies(cookies, persistSes, accountId);
 
         // Step 3: Save account entry right away so it appears in the menu
         upsertAccount({
@@ -287,20 +273,7 @@ function buildMenu() {
 
           // Re-copy cookies to the real account partition
           const realSes = getSession(realId);
-          for (const cookie of cookies) {
-            try {
-              await realSes.cookies.set({
-                url: `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`,
-                name: cookie.name,
-                value: cookie.value,
-                secure: cookie.secure,
-                httpOnly: cookie.httpOnly,
-                expirationDate: cookie.expirationDate,
-              });
-            } catch {
-              /* ignore */
-            }
-          }
+          await copyProviderCookies(cookies, realSes, realId);
 
           upsertAccount({
             id: realId,
@@ -401,6 +374,32 @@ function onStatus(_state, _message, _accountId) {
 function shortenPath(p) {
   const home = require('node:os').homedir();
   return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+}
+
+async function copyProviderCookies(cookies, targetSession, targetLabel) {
+  console.log(`[tray] Copying ${cookies.length} cookies to ${targetLabel}`);
+  for (const cookie of cookies) {
+    const details = {
+      url: `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`,
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain,
+      path: cookie.path,
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      expirationDate: cookie.expirationDate,
+    };
+
+    if (cookie.sameSite) {
+      details.sameSite = cookie.sameSite;
+    }
+
+    try {
+      await targetSession.cookies.set(details);
+    } catch (e) {
+      console.log(`[tray] Cookie copy failed for ${targetLabel}: ${cookie.name}: ${e.message}`);
+    }
+  }
 }
 
 function createTray() {

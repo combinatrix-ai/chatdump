@@ -53,9 +53,26 @@ function openLoginWindow(providerName, accountId) {
       },
     });
 
-    win.loadURL(prov.loginUrl);
-
     let resolved = false;
+
+    // Clear any existing auth cookies so the change listener only fires on a real new login.
+    // Without this, stale cookies (e.g. on re-login) can cause the listener to fire while the
+    // login page itself rotates session cookies, closing the window before the user logs in.
+    (async () => {
+      try {
+        const existing = await ses.cookies.get({ url: prov.baseUrl });
+        for (const c of existing) {
+          const matches = c.name === prov.cookieName ||
+            (prov.cookiePrefix && c.name.startsWith(prov.cookieName));
+          if (matches) {
+            await ses.cookies.remove(prov.baseUrl, c.name);
+          }
+        }
+      } catch (e) {
+        console.log(`[auth] Could not clear existing cookies: ${e.message}`);
+      }
+      win.loadURL(prov.loginUrl);
+    })();
 
     async function finish(cookie) {
       if (resolved) return;
@@ -102,6 +119,13 @@ function openLoginWindow(providerName, accountId) {
         console.log(`[auth] Cookie ${cookie.name} set for ${cookie.domain}`);
         // Delay to let all split cookies arrive
         setTimeout(async () => {
+          // Don't resolve if we're still on a login/auth page — ChatGPT rotates
+          // session cookies during the login flow before the user has actually authenticated.
+          const currentUrl = win.isDestroyed() ? '' : win.webContents.getURL();
+          if (/\/(auth|login|signin|signup|sign-in|sign-up|oauth|authorize)/i.test(currentUrl)) {
+            console.log(`[auth] Ignoring cookie change while on auth page: ${currentUrl}`);
+            return;
+          }
           const value = await findAuthCookie(ses, prov);
           if (value) finish(value);
         }, 1000);

@@ -36,15 +36,15 @@ function buildAccountStatus(account) {
   const syncing = isSyncing(account.id);
   if (syncing) {
     const progress = getAccountProgress(account.id);
-    return { icon: '⟳', suffix: progress || 'Syncing…' };
+    return { icon: '🔄', suffix: progress || 'Syncing…' };
   }
   if (account.status === 'expired') {
     return { icon: '🔒', suffix: 'Re-login needed' };
   }
   if (account.lastError) {
-    return { icon: '⚠', suffix: shortenError(account.lastError) };
+    return { icon: '⚠️', suffix: shortenError(account.lastError) };
   }
-  return { icon: '✓', suffix: '' };
+  return { icon: '✅', suffix: '' };
 }
 
 function buildGlobalHeader(accounts) {
@@ -90,7 +90,7 @@ function buildMenu() {
 
     // Error banner at top if there's an error
     if (account.lastError) {
-      sub.push({ label: `⚠ ${account.lastError}`, enabled: false });
+      sub.push({ label: `⚠️ ${account.lastError}`, enabled: false });
       sub.push({ type: 'separator' });
     }
 
@@ -166,7 +166,7 @@ function buildMenu() {
           hour: '2-digit',
           minute: '2-digit',
         });
-        const icon = log.level === 'error' ? '✗' : '✓';
+        const icon = log.level === 'error' ? '❌' : '✅';
         // Truncate long messages for menu display
         const msg = log.message.length > 50 ? `${log.message.slice(0, 47)}...` : log.message;
         sub.push({ label: `  ${icon} ${time}: ${msg}`, enabled: false });

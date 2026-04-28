@@ -281,6 +281,7 @@ function buildMenu() {
           // Re-copy cookies to the real account partition
           const realSes = getSession(realId);
           await copyProviderCookies(cookies, realSes, realId);
+          await clearSessionStorage(persistSes, accountId);
 
           upsertAccount({
             id: realId,
@@ -406,6 +407,15 @@ async function copyProviderCookies(cookies, targetSession, targetLabel) {
     } catch (e) {
       console.log(`[tray] Cookie copy failed for ${targetLabel}: ${cookie.name}: ${e.message}`);
     }
+  }
+}
+
+async function clearSessionStorage(ses, label) {
+  try {
+    await ses.clearStorageData();
+    console.log(`[tray] Cleared temporary session storage for ${label}`);
+  } catch (e) {
+    console.log(`[tray] Could not clear temporary session storage for ${label}: ${e.message}`);
   }
 }
 

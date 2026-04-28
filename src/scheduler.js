@@ -98,7 +98,7 @@ async function syncAccount(accountId, onStatus) {
           const changed = writeConversation(
             vaultPath,
             provider.subdir,
-            account.email,
+            account.email || account.id,
             filename,
             md,
           );

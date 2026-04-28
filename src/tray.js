@@ -1,13 +1,62 @@
 const { app, shell, Tray, Menu, nativeImage, dialog, BrowserWindow } = require('electron');
-const path = require('path');
-const { store, getAccounts, upsertAccount, removeAccount, updateAccount, getVaultPath } = require('./store');
-const { syncAccount, syncAll, isSyncing } = require('./scheduler');
+const path = require('node:path');
+const {
+  store,
+  getAccounts,
+  upsertAccount,
+  removeAccount,
+  updateAccount,
+  getVaultPath,
+} = require('./store');
+const {
+  syncAccount,
+  syncAll,
+  isSyncing,
+  getAccountProgress,
+  getSyncingCount,
+} = require('./scheduler');
 const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
 
 let tray = null;
-let globalStatus = 'Ready';
+
+function shortenError(msg) {
+  if (!msg) return '';
+  // Strip common prefix and trim down for the menu
+  let s = String(msg).replace(/^Sync failed:\s*/i, '');
+  // For "API error: 500 https://… body=…" keep just status
+  const apiMatch = s.match(/^API error:\s*(\d+)/i);
+  if (apiMatch) return `API ${apiMatch[1]}`;
+  if (s.length > 40) s = `${s.slice(0, 37)}…`;
+  return s;
+}
+
+function buildAccountStatus(account) {
+  const syncing = isSyncing(account.id);
+  if (syncing) {
+    const progress = getAccountProgress(account.id);
+    return { icon: '⟳', suffix: progress || 'Syncing…' };
+  }
+  if (account.status === 'expired') {
+    return { icon: '🔒', suffix: 'Re-login needed' };
+  }
+  if (account.lastError) {
+    return { icon: '⚠', suffix: shortenError(account.lastError) };
+  }
+  return { icon: '✓', suffix: '' };
+}
+
+function buildGlobalHeader(accounts) {
+  const syncingCount = getSyncingCount();
+  if (syncingCount > 0) {
+    return `Syncing ${syncingCount} of ${accounts.length} account${accounts.length === 1 ? '' : 's'}`;
+  }
+  if (accounts.length === 0) return 'Add an account to start';
+  const erroring = accounts.filter((a) => a.lastError || a.status === 'expired').length;
+  if (erroring > 0) return `${erroring} account${erroring === 1 ? '' : 's'} need attention`;
+  return 'All up to date';
+}
 
 function buildMenu() {
   if (!tray) return;
@@ -20,12 +69,20 @@ function buildMenu() {
     const provider = getProvider(account.provider);
     const displayName = provider?.displayName || account.provider;
     const label = account.email || account.name || 'Unknown';
-    const plan = account.plan ? ` (${account.plan})` : '';
     const lastSync = account.lastSyncedAt
-      ? new Date(account.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      ? new Date(account.lastSyncedAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
       : 'never';
 
-    const statusIcon = account.status === 'expired' ? ' ⚠' : ' ✓';
+    const { icon, suffix } = buildAccountStatus(account);
+    // While syncing, show progress in place of last-sync time; otherwise show time.
+    const trailing = isSyncing(account.id)
+      ? `${icon} ${suffix}`
+      : suffix
+        ? `(${lastSync}) ${icon} ${suffix}`
+        : `(${lastSync}) ${icon}`;
     const vaultPath = getVaultPath(account.id);
 
     // Build submenu items
@@ -104,11 +161,14 @@ function buildMenu() {
       sub.push({ label: 'Recent Activity', enabled: false });
       for (const log of recentLogs.reverse()) {
         const time = new Date(log.time).toLocaleString([], {
-          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
         });
         const icon = log.level === 'error' ? '✗' : '✓';
         // Truncate long messages for menu display
-        const msg = log.message.length > 50 ? log.message.slice(0, 47) + '...' : log.message;
+        const msg = log.message.length > 50 ? `${log.message.slice(0, 47)}...` : log.message;
         sub.push({ label: `  ${icon} ${time}: ${msg}`, enabled: false });
       }
       sub.push({
@@ -132,7 +192,9 @@ function buildMenu() {
               upsertAccount({ ...account, ...info, status: 'ok', lastError: null });
               buildMenu();
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
       },
     });
@@ -145,7 +207,7 @@ function buildMenu() {
     });
 
     return {
-      label: `${displayName}: ${label}${plan} (${lastSync})${statusIcon}`,
+      label: `${displayName}: ${label} ${trailing}`,
       submenu: sub,
     };
   });
@@ -161,7 +223,7 @@ function buildMenu() {
         // Step 1: Create account entry immediately with a temp ID
         // Use timestamp to ensure uniqueness, will be updated with email later
         const tempId = `${prov.name}:account-${Date.now()}`;
-        let accountId = tempId;
+        const accountId = tempId;
 
         // Step 2: Copy cookies from temp session to persistent session
         const persistSes = getSession(accountId);
@@ -188,7 +250,6 @@ function buildMenu() {
           provider: prov.name,
           email: '',
           name: `${prov.displayName} account`,
-          plan: '',
           status: 'ok',
         });
         buildMenu();
@@ -201,21 +262,25 @@ function buildMenu() {
             info = prov.parseAccountInfo(result.accountInfo);
           }
           // Strategy 2: Parse from cookies directly
-          console.log(`[tray] result.cookies keys: ${Object.keys(result.cookies || {}).join(', ')}`);
-          if ((!info || !info.email) && result.cookies && prov.parseAccountFromCookies) {
+          console.log(
+            `[tray] result.cookies keys: ${Object.keys(result.cookies || {}).join(', ')}`,
+          );
+          if (!info?.email && result.cookies && prov.parseAccountFromCookies) {
             const cookieInfo = prov.parseAccountFromCookies(result.cookies);
             if (cookieInfo.email || cookieInfo.name) {
               info = { ...info, ...cookieInfo };
             }
           }
           // Strategy 3: API call with session
-          if (!info || !info.email) {
+          if (!info?.email) {
             const apiInfo = await prov.getAccountInfo(persistSes);
             if (apiInfo) info = { ...info, ...apiInfo };
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
 
-        if (info && info.email) {
+        if (info?.email) {
           const realId = `${prov.name}:${info.email}`;
           // Remove temp entry, create proper one
           removeAccount(accountId);
@@ -232,7 +297,9 @@ function buildMenu() {
                 httpOnly: cookie.httpOnly,
                 expirationDate: cookie.expirationDate,
               });
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
 
           upsertAccount({
@@ -240,12 +307,11 @@ function buildMenu() {
             provider: prov.name,
             email: info.email,
             name: info.name,
-            plan: info.plan,
             status: 'ok',
           });
-        } else if (info && info.name) {
+        } else if (info?.name) {
           // Got name but no email — update the temp entry
-          updateAccount(accountId, { name: info.name, plan: info.plan || '' });
+          updateAccount(accountId, { name: info.name });
         }
 
         buildMenu();
@@ -256,10 +322,8 @@ function buildMenu() {
   }));
 
   // --- Build full menu ---
-  const template = [
-    { label: globalStatus, enabled: false },
-    { type: 'separator' },
-  ];
+  const header = buildGlobalHeader(accounts);
+  const template = [{ label: header, enabled: false }, { type: 'separator' }];
 
   if (accountItems.length > 0) {
     template.push(...accountItems);
@@ -326,17 +390,17 @@ function buildMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   tray.setContextMenu(menu);
-  tray.setToolTip(`webui-sync — ${globalStatus}`);
+  tray.setToolTip(`webui-sync — ${header}`);
 }
 
-function onStatus(state, message, _accountId) {
-  globalStatus = message;
+function onStatus(_state, _message, _accountId) {
+  // Status now derived from scheduler state + per-account fields; just trigger a refresh.
   buildMenu();
 }
 
 function shortenPath(p) {
-  const home = require('os').homedir();
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
+  const home = require('node:os').homedir();
+  return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
 }
 
 function createTray() {

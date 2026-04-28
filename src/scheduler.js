@@ -1,5 +1,5 @@
 const { store, getAccounts, getAccount, updateAccount, getVaultPath } = require('./store');
-const { ensureAuthenticated, openLoginWindow, getSession } = require('./auth');
+const { ensureAuthenticated, getSession } = require('./auth');
 const { getProvider } = require('./providers');
 const { writeConversation } = require('./writer');
 const { appendLog } = require('./synclog');
@@ -7,6 +7,7 @@ const { appendLog } = require('./synclog');
 let intervalId = null;
 let onMenuRefresh = null;
 const syncingAccounts = new Set();
+const accountProgress = new Map(); // id -> short progress string
 
 function setMenuRefreshCallback(cb) {
   onMenuRefresh = cb;
@@ -14,6 +15,19 @@ function setMenuRefreshCallback(cb) {
 
 function isSyncing(accountId) {
   return syncingAccounts.has(accountId);
+}
+
+function getAccountProgress(accountId) {
+  return accountProgress.get(accountId) || '';
+}
+
+function getSyncingCount() {
+  return syncingAccounts.size;
+}
+
+function setProgress(accountId, text) {
+  if (text) accountProgress.set(accountId, text);
+  else accountProgress.delete(accountId);
 }
 
 async function syncAccount(accountId, onStatus) {
@@ -30,106 +44,128 @@ async function syncAccount(accountId, onStatus) {
 
   syncingAccounts.add(accountId);
 
-  const vaultPath = getVaultPath(accountId);
-  if (!vaultPath) {
-    const msg = 'No vault path configured';
-    appendLog(accountId, { level: 'error', message: msg });
-    updateAccount(accountId, { lastError: msg });
-    onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
-    onMenuRefresh?.();
-    return;
-  }
-
-  appendLog(accountId, { level: 'info', message: 'Sync started' });
-  onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
-
   try {
-    await ensureAuthenticated(account.provider, accountId);
-  } catch (e) {
-    const msg = 'Login required — session missing or expired';
-    appendLog(accountId, { level: 'error', message: msg });
-    updateAccount(accountId, { status: 'expired', lastError: msg });
-    onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
-    onMenuRefresh?.();
-    return;
-  }
-
-  onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
-
-  try {
-    const ses = getSession(accountId);
-    const timestamps = account.timestamps || {};
-    let totalConvs = 0;
-
-    let written = 0;
-    let fetched = 0;
-    let saveCounter = 0;
-
-    // onConversation callback: write each conversation immediately as it's fetched
-    const onConversation = (conv) => {
-      fetched++;
-      try {
-        const md = provider.convertToMarkdown(conv);
-        const filename = provider.makeFilename(conv);
-        const changed = writeConversation(vaultPath, provider.subdir, account.email, filename, md);
-        if (changed) written++;
-      } catch (e) {
-        console.error(`[${account.provider}] Write error:`, e.message);
-      }
-    };
-
-    const conversations = await provider.fetchConversations(ses, timestamps, (current, total, customMsg) => {
-      totalConvs = total;
-      const statusMsg = customMsg
-        ? `${provider.displayName}: ${customMsg}`
-        : `${provider.displayName}: ${current}/${total} (${written} written)`;
-      onStatus?.('syncing', statusMsg, accountId);
-      saveCounter++;
-      if (saveCounter % 25 === 0) {
-        updateAccount(accountId, { timestamps, lastSyncedAt: new Date().toISOString() });
-        appendLog(accountId, {
-          level: 'info',
-          message: `In progress: ${written} written, ${current}/${total} processed`,
-          written,
-          fetched,
-        });
-        onMenuRefresh?.();
-      }
-    }, onConversation);
-
-    // Write any remaining conversations returned as array (for providers that don't use onConversation)
-    for (const conv of conversations) {
-      onConversation(conv);
-    }
-
-    const now = new Date().toISOString();
-    const msg = written > 0
-      ? `Synced ${written} files (${fetched} fetched)`
-      : `Up to date (${totalConvs || 0} checked)`;
-
-    appendLog(accountId, { level: 'info', message: msg, written, fetched });
-    updateAccount(accountId, {
-      timestamps,
-      lastSyncedAt: now,
-      status: 'ok',
-      lastError: null,
-    });
-
-    onStatus?.('idle', `${provider.displayName}: ${msg}`, accountId);
-  } catch (e) {
-    let msg;
-    if (e.message === 'AUTH_EXPIRED') {
-      msg = 'Session expired — re-login needed';
-      updateAccount(accountId, { status: 'expired', lastError: msg });
-    } else {
-      msg = `Sync failed: ${e.message}`;
+    const vaultPath = getVaultPath(accountId);
+    if (!vaultPath) {
+      const msg = 'No vault path configured';
+      appendLog(accountId, { level: 'error', message: msg });
       updateAccount(accountId, { lastError: msg });
-      console.error(`[${account.provider}] Sync error:`, e);
+      onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
+      onMenuRefresh?.();
+      return;
     }
-    appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
-    onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
+
+    appendLog(accountId, { level: 'info', message: 'Sync started' });
+    updateAccount(accountId, { lastError: null });
+    setProgress(accountId, 'Authenticating…');
+    onMenuRefresh?.();
+    onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
+
+    try {
+      await ensureAuthenticated(account.provider, accountId);
+    } catch (_e) {
+      const msg = 'Login required — session missing or expired';
+      appendLog(accountId, { level: 'error', message: msg });
+      updateAccount(accountId, { status: 'expired', lastError: msg });
+      onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
+      onMenuRefresh?.();
+      return;
+    }
+
+    setProgress(accountId, 'Fetching…');
+    onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
+
+    try {
+      const ses = getSession(accountId);
+      const timestamps = account.timestamps || {};
+      let totalConvs = 0;
+
+      let written = 0;
+      let fetched = 0;
+      let saveCounter = 0;
+
+      // onConversation callback: write each conversation immediately as it's fetched
+      const onConversation = (conv) => {
+        fetched++;
+        try {
+          const md = provider.convertToMarkdown(conv);
+          const filename = provider.makeFilename(conv);
+          const changed = writeConversation(
+            vaultPath,
+            provider.subdir,
+            account.email,
+            filename,
+            md,
+          );
+          if (changed) written++;
+        } catch (e) {
+          console.error(`[${account.provider}] Write error:`, e.message);
+        }
+      };
+
+      const conversations = await provider.fetchConversations(
+        ses,
+        timestamps,
+        (current, total, customMsg) => {
+          totalConvs = total;
+          const shortMsg = customMsg
+            ? customMsg
+            : total != null
+              ? `${current}/${total} (${written} written)`
+              : `${current} processed`;
+          setProgress(accountId, shortMsg);
+          onStatus?.('syncing', `${provider.displayName}: ${shortMsg}`, accountId);
+          saveCounter++;
+          if (saveCounter % 25 === 0) {
+            updateAccount(accountId, { timestamps, lastSyncedAt: new Date().toISOString() });
+            appendLog(accountId, {
+              level: 'info',
+              message: `In progress: ${written} written, ${current}/${total} processed`,
+              written,
+              fetched,
+            });
+            onMenuRefresh?.();
+          }
+        },
+        onConversation,
+      );
+
+      // Write any remaining conversations returned as array (for providers that don't use onConversation)
+      for (const conv of conversations) {
+        onConversation(conv);
+      }
+
+      const now = new Date().toISOString();
+      const msg =
+        written > 0
+          ? `Synced ${written} files (${fetched} fetched)`
+          : `Up to date (${totalConvs || 0} checked)`;
+
+      appendLog(accountId, { level: 'info', message: msg, written, fetched });
+      updateAccount(accountId, {
+        timestamps,
+        lastSyncedAt: now,
+        status: 'ok',
+        lastError: null,
+      });
+
+      onStatus?.('idle', `${provider.displayName}: ${msg}`, accountId);
+    } catch (e) {
+      let msg;
+      if (e.message === 'AUTH_EXPIRED') {
+        msg = 'Session expired — re-login needed';
+        updateAccount(accountId, { status: 'expired', lastError: msg });
+      } else {
+        msg = `Sync failed: ${e.message}`;
+        updateAccount(accountId, { lastError: msg });
+        console.error(`[${account.provider}] Sync error:`, e);
+      }
+      appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
+      onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
+    }
   } finally {
     syncingAccounts.delete(accountId);
+    setProgress(accountId, '');
   }
 
   onMenuRefresh?.();
@@ -156,4 +192,13 @@ function stopScheduler() {
   }
 }
 
-module.exports = { syncAccount, syncAll, startScheduler, stopScheduler, setMenuRefreshCallback, isSyncing };
+module.exports = {
+  syncAccount,
+  syncAll,
+  startScheduler,
+  stopScheduler,
+  setMenuRefreshCallback,
+  isSyncing,
+  getAccountProgress,
+  getSyncingCount,
+};

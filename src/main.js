@@ -4,6 +4,11 @@ const { startScheduler, stopScheduler, setMenuRefreshCallback } = require('./sch
 const { store, getAccounts } = require('./store');
 const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
+const { ENABLED: DEBUG_ENABLED, getLogPath } = require('./debug-log');
+
+if (DEBUG_ENABLED) {
+  console.log(`[debug] HTTP logging enabled → ${getLogPath()}`);
+}
 
 // Don't show dock icon on macOS (tray-only app)
 if (process.platform === 'darwin') {
@@ -25,16 +30,18 @@ async function migrateCookies() {
 
     const ses = getSession(account.id);
     for (const cookie of cookies) {
-      await ses.cookies.set({
-        url: prov.baseUrl,
-        name: cookie.name,
-        value: cookie.value,
-        domain: cookie.domain,
-        path: cookie.path,
-        secure: cookie.secure,
-        httpOnly: cookie.httpOnly,
-        expirationDate: cookie.expirationDate,
-      }).catch(() => {});
+      await ses.cookies
+        .set({
+          url: prov.baseUrl,
+          name: cookie.name,
+          value: cookie.value,
+          domain: cookie.domain,
+          path: cookie.path,
+          secure: cookie.secure,
+          httpOnly: cookie.httpOnly,
+          expirationDate: cookie.expirationDate,
+        })
+        .catch(() => {});
     }
     console.log(`[migrate] Copied cookies for ${account.id}`);
   }

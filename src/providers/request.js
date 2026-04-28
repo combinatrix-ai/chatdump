@@ -1,49 +1,112 @@
 const { net } = require('electron');
+const { logHttp } = require('../debug-log');
+
+const BODY_LOG_LIMIT = 4096;
+
+function truncate(s) {
+  if (typeof s !== 'string') return s;
+  return s.length > BODY_LOG_LIMIT
+    ? `${s.slice(0, BODY_LOG_LIMIT)}…(+${s.length - BODY_LOG_LIMIT} bytes)`
+    : s;
+}
 
 async function makeRequest(url, ses, extraHeaders) {
-  // Manually attach cookies from session to work around Electron session isolation quirks
   let cookieHeader = '';
   if (ses) {
     const cookies = await ses.cookies.get({ url });
     cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
   }
 
+  const requestHeaders = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    ...(extraHeaders || {}),
+  };
+  const startedAt = Date.now();
+
   return new Promise((resolve, reject) => {
     const options = { url, useSessionCookies: !ses };
     if (ses) options.session = ses;
 
     const req = net.request(options);
-    req.setHeader('Accept', 'application/json');
-    req.setHeader('Content-Type', 'application/json');
-    if (cookieHeader) req.setHeader('Cookie', cookieHeader);
-    if (extraHeaders) {
-      for (const [k, v] of Object.entries(extraHeaders)) {
-        req.setHeader(k, v);
-      }
+    for (const [k, v] of Object.entries(requestHeaders)) {
+      req.setHeader(k, v);
     }
 
     let body = '';
     req.on('response', (response) => {
-      if (response.statusCode === 401 || response.statusCode === 403) {
-        reject(new Error('AUTH_EXPIRED'));
-        return;
-      }
-      if (response.statusCode >= 400) {
-        reject(new Error(`API error: ${response.statusCode}`));
-        return;
-      }
-      response.on('data', (chunk) => { body += chunk.toString(); });
+      const status = response.statusCode;
+      const responseHeaders = response.headers;
+
+      response.on('data', (chunk) => {
+        body += chunk.toString();
+      });
       response.on('end', () => {
-        try { resolve(JSON.parse(body)); }
-        catch (e) { reject(new Error(`Parse error: ${e.message}`)); }
+        const durationMs = Date.now() - startedAt;
+        const ok = status < 400;
+
+        let parsed = null;
+        let summary = null;
+        try {
+          parsed = JSON.parse(body);
+          if (parsed && typeof parsed === 'object') {
+            summary = {
+              keys: Object.keys(parsed),
+              total: parsed.total,
+              limit: parsed.limit,
+              offset: parsed.offset,
+              itemsLength: Array.isArray(parsed.items) ? parsed.items.length : undefined,
+            };
+          }
+        } catch {
+          /* leave parsed=null */
+        }
+
+        logHttp({
+          kind: 'json',
+          method: 'GET',
+          url,
+          status,
+          durationMs,
+          requestHeaders,
+          responseHeaders,
+          responseSummary: summary,
+          responseBody: truncate(body),
+          ok,
+        });
+
+        if (status === 401 || status === 403) {
+          reject(new Error('AUTH_EXPIRED'));
+          return;
+        }
+        if (status >= 400) {
+          reject(new Error(`API error: ${status} ${url} body=${truncate(body)}`));
+          return;
+        }
+        if (parsed === null) {
+          reject(new Error(`Parse error on ${url}`));
+          return;
+        }
+        resolve(parsed);
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      logHttp({
+        kind: 'json',
+        method: 'GET',
+        url,
+        durationMs: Date.now() - startedAt,
+        requestHeaders,
+        error: err.message,
+        ok: false,
+      });
+      reject(err);
+    });
     req.end();
   });
 }
 
-// Returns raw HTML (for Gemini page scraping)
 async function makeRawRequest(url, ses) {
   let cookieHeader = '';
   if (ses) {
@@ -51,26 +114,65 @@ async function makeRawRequest(url, ses) {
     cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
   }
 
+  const requestHeaders = cookieHeader ? { Cookie: cookieHeader } : {};
+  const startedAt = Date.now();
+
   return new Promise((resolve, reject) => {
     const options = { url, useSessionCookies: !ses };
     if (ses) options.session = ses;
 
     const req = net.request(options);
-    if (cookieHeader) req.setHeader('Cookie', cookieHeader);
+    for (const [k, v] of Object.entries(requestHeaders)) {
+      req.setHeader(k, v);
+    }
+
     let body = '';
     req.on('response', (response) => {
-      if (response.statusCode === 401 || response.statusCode === 403) {
-        reject(new Error('AUTH_EXPIRED'));
-        return;
-      }
-      if (response.statusCode >= 400) {
-        reject(new Error(`HTTP ${response.statusCode}`));
-        return;
-      }
-      response.on('data', (chunk) => { body += chunk.toString(); });
-      response.on('end', () => resolve(body));
+      const status = response.statusCode;
+      const responseHeaders = response.headers;
+
+      response.on('data', (chunk) => {
+        body += chunk.toString();
+      });
+      response.on('end', () => {
+        const durationMs = Date.now() - startedAt;
+        const ok = status < 400;
+
+        logHttp({
+          kind: 'raw',
+          method: 'GET',
+          url,
+          status,
+          durationMs,
+          requestHeaders,
+          responseHeaders,
+          responseBody: truncate(body),
+          ok,
+        });
+
+        if (status === 401 || status === 403) {
+          reject(new Error('AUTH_EXPIRED'));
+          return;
+        }
+        if (status >= 400) {
+          reject(new Error(`HTTP ${status} ${url} body=${truncate(body)}`));
+          return;
+        }
+        resolve(body);
+      });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      logHttp({
+        kind: 'raw',
+        method: 'GET',
+        url,
+        durationMs: Date.now() - startedAt,
+        requestHeaders,
+        error: err.message,
+        ok: false,
+      });
+      reject(err);
+    });
     req.end();
   });
 }

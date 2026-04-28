@@ -12,4 +12,4 @@ function allProviders() {
   return Object.values(providers);
 }
 
-module.exports = { getProvider, allProviders, providers };
+module.exports = { getProvider, allProviders };

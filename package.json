@@ -5,7 +5,11 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
+    "knip": "knip"
   },
   "build": {
     "appId": "com.webui-sync.app",
@@ -15,11 +19,12 @@
     }
   },
   "dependencies": {
-    "electron-store": "^8.2.0",
-    "simple-git": "^3.27.0"
+    "electron-store": "^8.2.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
     "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "knip": "^6.7.0"
   }
 }

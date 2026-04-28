@@ -9,7 +9,7 @@ function getSession(accountId) {
 // Find auth cookie — handles both exact name and prefix (split cookies like .0, .1)
 async function findAuthCookie(ses, prov) {
   // Try exact match first
-  let cookies = await ses.cookies.get({ url: prov.baseUrl, name: prov.cookieName });
+  const cookies = await ses.cookies.get({ url: prov.baseUrl, name: prov.cookieName });
   if (cookies.length > 0) return cookies[0].value;
 
   // Try prefix match (e.g. __Secure-next-auth.session-token.0)
@@ -62,8 +62,8 @@ function openLoginWindow(providerName, accountId) {
       try {
         const existing = await ses.cookies.get({ url: prov.baseUrl });
         for (const c of existing) {
-          const matches = c.name === prov.cookieName ||
-            (prov.cookiePrefix && c.name.startsWith(prov.cookieName));
+          const matches =
+            c.name === prov.cookieName || (prov.cookiePrefix && c.name.startsWith(prov.cookieName));
           if (matches) {
             await ses.cookies.remove(prov.baseUrl, c.name);
           }
@@ -82,19 +82,21 @@ function openLoginWindow(providerName, accountId) {
 
       // Grab all cookies for the provider domain — providers can extract info from them
       let accountInfo = null;
-      let allCookies = {};
+      const allCookies = {};
       try {
         const cookieList = await ses.cookies.get({ url: prov.baseUrl });
         for (const c of cookieList) {
           allCookies[c.name] = c.value;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
 
       // Also try fetching account info via browser JS context
       if (prov.meEndpoint) {
         try {
           const raw = await win.webContents.executeJavaScript(
-            `fetch('${prov.meEndpoint}', { credentials: 'include' }).then(r => r.json()).then(d => JSON.stringify(d))`
+            `fetch('${prov.meEndpoint}', { credentials: 'include' }).then(r => r.json()).then(d => JSON.stringify(d))`,
           );
           accountInfo = JSON.parse(raw);
           console.log(`[auth] Fetched account info via browser for ${prov.name}`);
@@ -110,7 +112,8 @@ function openLoginWindow(providerName, accountId) {
     function onCookieChanged(_event, cookie, _cause, removed) {
       if (removed) return;
       // Match exact name or prefix (e.g. cookieName.0, cookieName.1)
-      const matches = cookie.name === prov.cookieName ||
+      const matches =
+        cookie.name === prov.cookieName ||
         (prov.cookiePrefix && cookie.name.startsWith(prov.cookieName));
       if (!matches) return;
 
@@ -161,4 +164,4 @@ async function ensureAuthenticated(providerName, accountId) {
   return result.cookie;
 }
 
-module.exports = { getSession, getSessionCookie, openLoginWindow, ensureAuthenticated };
+module.exports = { getSession, openLoginWindow, ensureAuthenticated };

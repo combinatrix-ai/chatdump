@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function writeConversation(vaultPath, providerSubdir, accountEmail, filename, markdownContent) {
   // Output: {vault}/raw/{provider}/{email}/filename.md

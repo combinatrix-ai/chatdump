@@ -55,7 +55,7 @@ function updateAccount(accountId, updates) {
 
 function getVaultPath(accountId) {
   const account = getAccount(accountId);
-  return (account && account.vaultPath) || store.get('defaultVaultPath') || '';
+  return account?.vaultPath || store.get('defaultVaultPath') || '';
 }
 
 module.exports = {

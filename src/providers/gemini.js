@@ -13,19 +13,22 @@ const provider = {
   cookieName: '__Secure-1PSID',
 
   // Extract account info from cookies
-  parseAccountFromCookies(cookies) {
+  parseAccountFromCookies(_cookies) {
     // No reliable email in cookies for Gemini — will be filled from page HTML
     return { email: '', name: '', plan: '' };
   },
 
-  parseAccountInfo() { return null; },
+  parseAccountInfo() {
+    return null;
+  },
 
   async getAccountInfo(ses) {
     // Fetch the app page and extract email from HTML
     try {
       const html = await makeRawRequest(`${BASE}/app`, ses);
       const emails = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-      const email = emails.find(e => !e.includes('google.com') && !e.includes('googlers')) || emails[0] || '';
+      const email =
+        emails.find((e) => !e.includes('google.com') && !e.includes('googlers')) || emails[0] || '';
       // Check for Pro/Advanced subscription
       const isPro = html.includes('"PRO"') || html.includes('"gemini_advanced"');
       return { email, name: '', plan: isPro ? 'Pro' : 'Free' };
@@ -55,13 +58,15 @@ const provider = {
       const pinnedResp = await batchExecute(ses, tokens, 'MaZiqc', pinnedPayload);
       const pinned = parseConversationList(pinnedResp);
       // Merge, avoiding duplicates
-      const existingIds = new Set(conversations.map(c => c.id));
+      const existingIds = new Set(conversations.map((c) => c.id));
       for (const p of pinned) {
         if (!existingIds.has(p.id)) {
           conversations.push(p);
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     // Step 3: Filter to updated conversations
     const toFetch = conversations.filter((c) => {
@@ -70,7 +75,7 @@ const provider = {
     });
 
     console.log(`[gemini] ${toFetch.length}/${conversations.length} to fetch`);
-    const updated = [];
+    const _updated = [];
 
     // Step 4: Fetch each conversation's messages
     for (let i = 0; i < toFetch.length; i++) {
@@ -109,7 +114,9 @@ const provider = {
       'source: gemini',
       `conversation_id: "${id}"`,
       '---',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     const body = (conversation.messages || [])
       .map((msg) => {
@@ -124,7 +131,9 @@ const provider = {
 
   makeFilename(conversation) {
     const ts = conversation.timestamp;
-    const date = ts ? new Date(ts).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const date = ts
+      ? new Date(ts).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
     const title = sanitize(conversation.title || 'untitled');
     const idSuffix = (conversation.id || '').replace('c_', '').slice(0, 8);
     return `${date}_${title}_${idSuffix}.md`;
@@ -173,13 +182,13 @@ async function batchExecute(ses, tokens, rpcId, payload) {
     const cookies2 = await ses.cookies.get({ url: 'https://google.com' });
     const allCookies = [...cookies1, ...cookies2];
     const seen = new Set();
-    const deduplicated = allCookies.filter(c => {
+    const deduplicated = allCookies.filter((c) => {
       const key = `${c.name}=${c.value}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-    cookieHeader = deduplicated.map(c => `${c.name}=${c.value}`).join('; ');
+    cookieHeader = deduplicated.map((c) => `${c.name}=${c.value}`).join('; ');
   }
 
   return new Promise((resolve, reject) => {
@@ -203,7 +212,9 @@ async function batchExecute(ses, tokens, rpcId, payload) {
         reject(new Error(`API error: ${response.statusCode}`));
         return;
       }
-      response.on('data', (chunk) => { body += chunk.toString(); });
+      response.on('data', (chunk) => {
+        body += chunk.toString();
+      });
       response.on('end', () => resolve(body));
     });
     req.on('error', reject);
@@ -273,7 +284,9 @@ function parseConversationMessages(raw) {
           if (userText) {
             messages.push({ role: 'user', text: userText });
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
 
         // Model response — try multiple paths since structure varies
         try {
@@ -286,7 +299,7 @@ function parseConversationMessages(raw) {
               // firstCandidate[0] = ["rc_xxx", ["text content"], ...]
               const textArr = firstCandidate[0]?.[1];
               if (Array.isArray(textArr)) {
-                text = textArr.filter(t => typeof t === 'string').join('\n\n');
+                text = textArr.filter((t) => typeof t === 'string').join('\n\n');
               } else if (typeof textArr === 'string') {
                 text = textArr;
               }
@@ -299,7 +312,9 @@ function parseConversationMessages(raw) {
               messages.push({ role: 'model', text });
             }
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
     }
   } catch (e) {
@@ -327,12 +342,27 @@ function parseFrames(text) {
 
     for (let i = arrStart; i < text.length; i++) {
       const ch = text[i];
-      if (escaped) { escaped = false; continue; }
-      if (ch === '\\') { escaped = true; continue; }
-      if (ch === '"') { inString = !inString; continue; }
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
       if (inString) continue;
       if (ch === '[') depth++;
-      if (ch === ']') { depth--; if (depth === 0) { end = i + 1; break; } }
+      if (ch === ']') {
+        depth--;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
     }
 
     if (depth === 0 && end > arrStart) {
@@ -346,7 +376,9 @@ function parseFrames(text) {
             }
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
       pos = end;
     } else {
       pos = arrStart + 2;
@@ -357,7 +389,10 @@ function parseFrames(text) {
 }
 
 function sanitize(name) {
-  return name.replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 80);
+  return name
+    .replace(/[/\\:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
 }
 
 module.exports = provider;

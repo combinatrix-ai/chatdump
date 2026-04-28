@@ -16,9 +16,11 @@ const provider = {
     const name = bootstrap?.account?.display_name || bootstrap?.account?.full_name || '';
     const orgs = bootstrap?.account?.memberships?.map((m) => m.organization) || [];
     const org = orgs[0] || {};
-    const plan = org.capabilities?.includes('claude_max') ? 'Max'
-      : org.capabilities?.includes('claude_pro') ? 'Pro'
-      : 'Free';
+    const plan = org.capabilities?.includes('claude_max')
+      ? 'Max'
+      : org.capabilities?.includes('claude_pro')
+        ? 'Pro'
+        : 'Free';
     return { email, name, plan, orgId: org.uuid };
   },
 
@@ -27,16 +29,21 @@ const provider = {
     if (!orgs || orgs.length === 0) return null;
     const org = orgs[0];
 
-    let email = '', name = '';
+    let email = '',
+      name = '';
     try {
       const bootstrap = await makeRequest(`${BASE}/api/bootstrap`, ses);
       email = bootstrap?.account?.email_address || '';
       name = bootstrap?.account?.display_name || bootstrap?.account?.full_name || '';
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
-    const plan = org.capabilities?.includes('claude_max') ? 'Max'
-      : org.capabilities?.includes('claude_pro') ? 'Pro'
-      : 'Free';
+    const plan = org.capabilities?.includes('claude_max')
+      ? 'Max'
+      : org.capabilities?.includes('claude_pro')
+        ? 'Pro'
+        : 'Free';
 
     return { email, name, plan, orgId: org.uuid };
   },
@@ -46,21 +53,27 @@ const provider = {
     if (!orgs || orgs.length === 0) return [];
     const orgId = orgs[0].uuid;
 
-    const conversations = await makeRequest(`${BASE}/api/organizations/${orgId}/chat_conversations`, ses);
+    const conversations = await makeRequest(
+      `${BASE}/api/organizations/${orgId}/chat_conversations`,
+      ses,
+    );
     const toFetch = conversations.filter((c) => {
       const last = timestamps[c.uuid];
       return !last || last !== c.updated_at;
     });
 
     console.log(`[claude] ${toFetch.length}/${conversations.length} to fetch`);
-    const updated = [];
+    const _updated = [];
 
     for (let i = 0; i < toFetch.length; i++) {
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
       await new Promise((r) => setTimeout(r, 500));
       try {
-        const full = await makeRequest(`${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`, ses);
+        const full = await makeRequest(
+          `${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`,
+          ses,
+        );
         onConversation?.(full);
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {
@@ -86,7 +99,9 @@ const provider = {
       'source: claude',
       `conversation_id: "${id}"`,
       '---',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     const messages = (conversation.chat_messages || [])
       .map((msg) => {
@@ -115,7 +130,8 @@ function extractText(content) {
       .map((b) => {
         if (typeof b === 'string') return b;
         if (b.type === 'text') return b.text || '';
-        if (b.type === 'code') return `\`\`\`${b.language || ''}\n${b.content || b.text || ''}\n\`\`\``;
+        if (b.type === 'code')
+          return `\`\`\`${b.language || ''}\n${b.content || b.text || ''}\n\`\`\``;
         if (b.type === 'tool_use') return `*[Tool: ${b.name}]*`;
         if (b.type === 'tool_result') return b.content ? extractText(b.content) : '';
         return '';
@@ -127,7 +143,10 @@ function extractText(content) {
 }
 
 function sanitize(name) {
-  return name.replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 80);
+  return name
+    .replace(/[/\\:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
 }
 
 module.exports = provider;

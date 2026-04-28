@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const { app } = require('electron');
 
 const MAX_ENTRIES = 200;
@@ -42,14 +42,6 @@ function getRecentLogs(accountId, count = 10) {
   return logs.slice(-count);
 }
 
-function getLastError(accountId) {
-  const logs = readLog(accountId);
-  for (let i = logs.length - 1; i >= 0; i--) {
-    if (logs[i].level === 'error') return logs[i];
-  }
-  return null;
-}
-
 function openLogFile(accountId) {
   const logPath = getLogPath(accountId);
   if (!fs.existsSync(logPath)) {
@@ -60,4 +52,4 @@ function openLogFile(accountId) {
   require('electron').shell.openPath(logPath);
 }
 
-module.exports = { appendLog, readLog, getRecentLogs, getLastError, openLogFile };
+module.exports = { appendLog, getRecentLogs, openLogFile };

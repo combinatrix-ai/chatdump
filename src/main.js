@@ -4,10 +4,15 @@ const { startScheduler, stopScheduler, setMenuRefreshCallback } = require('./sch
 const { store, getAccounts } = require('./store');
 const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
-const { ENABLED: DEBUG_ENABLED, getLogPath } = require('./debug-log');
+const {
+  ENABLED: DEBUG_ENABLED,
+  BODY_ENABLED: DEBUG_BODY_ENABLED,
+  getLogPath,
+} = require('./debug-log');
 
 if (DEBUG_ENABLED) {
-  console.log(`[debug] HTTP logging enabled → ${getLogPath()}`);
+  const bodyMode = DEBUG_BODY_ENABLED ? 'response bodies included' : 'response bodies omitted';
+  console.log(`[debug] HTTP logging enabled (${bodyMode}) → ${getLogPath()}`);
 }
 
 // Don't show dock icon on macOS (tray-only app)

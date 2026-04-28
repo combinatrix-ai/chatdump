@@ -2,7 +2,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const ENABLED = !!process.env.DEBUG;
+function isTruthyEnv(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
+}
+
+const ENABLED = isTruthyEnv(process.env.DEBUG);
+const BODY_ENABLED = isTruthyEnv(process.env.DEBUG_BODY);
 
 const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'webui-sync');
 let logPath = null;
@@ -28,10 +33,28 @@ function redactHeaders(headers) {
         .map((p) => p.split('=')[0].trim())
         .filter(Boolean);
       out[k] = `<redacted ${names.length} cookies: ${names.join(',')}>`;
+    } else if (lk === 'set-cookie') {
+      const values = Array.isArray(v) ? v : [v];
+      const names = values.map((p) => String(p).split('=')[0].trim()).filter(Boolean);
+      out[k] = `<redacted ${names.length} cookies: ${names.join(',')}>`;
     } else {
       out[k] = v;
     }
   }
+  return out;
+}
+
+function sanitizeEntry(entry) {
+  const out = {
+    ...entry,
+    requestHeaders: redactHeaders(entry.requestHeaders),
+    responseHeaders: redactHeaders(entry.responseHeaders),
+  };
+
+  if ('responseBody' in out && !BODY_ENABLED) {
+    out.responseBody = '<omitted; set DEBUG_BODY=1 to include truncated response bodies>';
+  }
+
   return out;
 }
 
@@ -41,8 +64,7 @@ function logHttp(entry) {
     const file = ensureLogFile();
     const line = JSON.stringify({
       ts: new Date().toISOString(),
-      ...entry,
-      requestHeaders: redactHeaders(entry.requestHeaders),
+      ...sanitizeEntry(entry),
     });
     fs.appendFileSync(file, `${line}\n`);
   } catch (e) {
@@ -55,4 +77,4 @@ function getLogPath() {
   return ENABLED ? ensureLogFile() : null;
 }
 
-module.exports = { logHttp, getLogPath, ENABLED };
+module.exports = { logHttp, getLogPath, ENABLED, BODY_ENABLED };

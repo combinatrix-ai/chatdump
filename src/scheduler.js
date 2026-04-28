@@ -192,8 +192,10 @@ async function syncAccount(accountId, onStatus) {
   onMenuRefresh?.();
 }
 
-async function syncAll(onStatus) {
-  const accounts = getAccounts().filter((a) => a.autoSync);
+async function syncAll(onStatus, options = {}) {
+  const accounts = options.includeDisabled
+    ? getAccounts()
+    : getAccounts().filter((a) => a.autoSync);
   for (const account of accounts) {
     await syncAccount(account.id, onStatus);
   }

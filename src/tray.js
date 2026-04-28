@@ -316,7 +316,7 @@ function buildMenu() {
   template.push({
     label: 'Sync All Now',
     enabled: accountItems.length > 0,
-    click: () => syncAll(onStatus),
+    click: () => syncAll(onStatus, { includeDisabled: true }),
   });
 
   template.push({ type: 'separator' });

@@ -132,7 +132,7 @@ async function syncAccount(accountId, onStatus) {
             updateAccount(accountId, { timestamps });
             appendLog(accountId, {
               level: 'info',
-              message: `In progress: ${written} written, ${current}/${total} processed`,
+              message: `In progress: ${written} written, ${shortMsg}`,
               written,
               fetched,
             });

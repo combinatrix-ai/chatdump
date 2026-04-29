@@ -66,8 +66,8 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', (e) => {
-  e.preventDefault();
+app.on('window-all-closed', () => {
+  // Tray-only app: keep running after login/dialog windows close.
 });
 
 app.on('before-quit', () => {

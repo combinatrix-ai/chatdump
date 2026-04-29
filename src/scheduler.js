@@ -115,7 +115,7 @@ async function syncAccount(accountId, onStatus) {
         }
       };
 
-      const conversations = await provider.fetchConversations(
+      await provider.fetchConversations(
         ses,
         timestamps,
         (current, total, customMsg) => {
@@ -141,15 +141,6 @@ async function syncAccount(accountId, onStatus) {
         },
         onConversation,
       );
-
-      // Write any remaining conversations returned as array (for providers that don't use onConversation)
-      for (const conv of conversations) {
-        try {
-          onConversation(conv);
-        } catch {
-          // Already logged in onConversation; keep syncing the rest.
-        }
-      }
 
       const now = new Date().toISOString();
       const msg = failedWrites

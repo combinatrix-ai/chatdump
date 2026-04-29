@@ -74,7 +74,6 @@ const provider = {
     });
 
     console.log(`[gemini] ${toFetch.length}/${conversations.length} to fetch`);
-    const _updated = [];
 
     // Step 4: Fetch each conversation's messages
     for (let i = 0; i < toFetch.length; i++) {

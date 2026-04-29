@@ -108,7 +108,7 @@ const provider = {
     });
 
     console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
-    const updated = [];
+    let fetchedCount = 0;
 
     let delay = 5000; // 5s between requests — ChatGPT rate limits aggressively
     let consecutiveFails = 0;
@@ -138,6 +138,7 @@ const provider = {
           });
           onConversation?.(full);
           timestamps[conv.id] = conv.update_time;
+          fetchedCount++;
           success = true;
           consecutiveFails = 0;
           delay = Math.max(3000, delay * 0.95); // Slowly ease back
@@ -159,9 +160,9 @@ const provider = {
       }
 
       // Log progress periodically
-      if (success && updated.length % 50 === 0) {
+      if (success && fetchedCount % 50 === 0) {
         console.log(
-          `[openai] Progress: ${updated.length} fetched, ${i + 1}/${toFetch.length} processed, delay=${delay / 1000}s`,
+          `[openai] Progress: ${fetchedCount} fetched, ${i + 1}/${toFetch.length} processed, delay=${delay / 1000}s`,
         );
       }
 

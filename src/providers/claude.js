@@ -63,7 +63,6 @@ const provider = {
     });
 
     console.log(`[claude] ${toFetch.length}/${conversations.length} to fetch`);
-    const _updated = [];
 
     for (let i = 0; i < toFetch.length; i++) {
       const conv = toFetch[i];

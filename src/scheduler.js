@@ -80,9 +80,10 @@ async function syncAccount(accountId, onStatus) {
     setProgress(accountId, 'Fetching…');
     onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
 
+    const ses = getSession(accountId);
+    const timestamps = account.timestamps || {};
+
     try {
-      const ses = getSession(accountId);
-      const timestamps = account.timestamps || {};
       let totalConvs = 0;
 
       let written = 0;
@@ -128,7 +129,7 @@ async function syncAccount(accountId, onStatus) {
           onStatus?.('syncing', `${provider.displayName}: ${shortMsg}`, accountId);
           saveCounter++;
           if (saveCounter % 25 === 0) {
-            updateAccount(accountId, { timestamps, lastSyncedAt: new Date().toISOString() });
+            updateAccount(accountId, { timestamps });
             appendLog(accountId, {
               level: 'info',
               message: `In progress: ${written} written, ${current}/${total} processed`,
@@ -176,10 +177,10 @@ async function syncAccount(accountId, onStatus) {
       let msg;
       if (e.message === 'AUTH_EXPIRED') {
         msg = 'Session expired — re-login needed';
-        updateAccount(accountId, { status: 'expired', lastError: msg });
+        updateAccount(accountId, { timestamps, status: 'expired', lastError: msg });
       } else {
         msg = `Sync failed: ${e.message}`;
-        updateAccount(accountId, { lastError: msg });
+        updateAccount(accountId, { timestamps, lastError: msg });
         console.error(`[${account.provider}] Sync error:`, e);
       }
       appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });

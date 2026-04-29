@@ -13,6 +13,12 @@
   },
   "build": {
     "appId": "com.webui-sync.app",
+    "files": [
+      "src/**/*",
+      "assets/iconTemplate.png",
+      "assets/iconTemplate@2x.png",
+      "package.json"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png"

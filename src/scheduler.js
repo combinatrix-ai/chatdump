@@ -4,7 +4,8 @@ const { getProvider } = require('./providers');
 const { writeConversation } = require('./writer');
 const { appendLog } = require('./synclog');
 
-let intervalId = null;
+let timeoutId = null;
+let schedulerRunning = false;
 let onMenuRefresh = null;
 const syncingAccounts = new Set();
 const accountProgress = new Map(); // id -> short progress string
@@ -203,15 +204,28 @@ async function syncAll(onStatus, options = {}) {
 
 function startScheduler(onStatus) {
   const minutes = store.get('syncIntervalMinutes') || 30;
+  const delayMs = minutes * 60 * 1000;
   stopScheduler();
-  intervalId = setInterval(() => syncAll(onStatus), minutes * 60 * 1000);
-  syncAll(onStatus);
+  schedulerRunning = true;
+
+  async function runAndScheduleNext() {
+    try {
+      await syncAll(onStatus);
+    } finally {
+      if (schedulerRunning) {
+        timeoutId = setTimeout(runAndScheduleNext, delayMs);
+      }
+    }
+  }
+
+  runAndScheduleNext();
 }
 
 function stopScheduler() {
-  if (intervalId) {
-    clearInterval(intervalId);
-    intervalId = null;
+  schedulerRunning = false;
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+    timeoutId = null;
   }
 }
 

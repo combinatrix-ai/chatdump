@@ -10,12 +10,25 @@ function truncate(s) {
     : s;
 }
 
-async function makeRequest(url, ses, extraHeaders) {
-  let cookieHeader = '';
-  if (ses) {
+async function buildCookieHeader(ses, urls) {
+  if (!ses) return '';
+
+  const seen = new Set();
+  const parts = [];
+  for (const url of urls) {
     const cookies = await ses.cookies.get({ url });
-    cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    for (const cookie of cookies) {
+      const key = `${cookie.name}=${cookie.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      parts.push(key);
+    }
   }
+  return parts.join('; ');
+}
+
+async function makeRequest(url, ses, extraHeaders) {
+  const cookieHeader = await buildCookieHeader(ses, [url]);
 
   const requestHeaders = {
     Accept: 'application/json',
@@ -108,11 +121,7 @@ async function makeRequest(url, ses, extraHeaders) {
 }
 
 async function makeRawRequest(url, ses) {
-  let cookieHeader = '';
-  if (ses) {
-    const cookies = await ses.cookies.get({ url });
-    cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-  }
+  const cookieHeader = await buildCookieHeader(ses, [url]);
 
   const requestHeaders = cookieHeader ? { Cookie: cookieHeader } : {};
   const startedAt = Date.now();
@@ -177,4 +186,74 @@ async function makeRawRequest(url, ses) {
   });
 }
 
-module.exports = { makeRequest, makeRawRequest };
+async function makeRawPostRequest(url, ses, body, extraHeaders = {}, cookieUrls = [url]) {
+  const cookieHeader = await buildCookieHeader(ses, cookieUrls);
+
+  const requestHeaders = {
+    ...extraHeaders,
+    ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+  };
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const options = { url, method: 'POST', useSessionCookies: !ses };
+    if (ses) options.session = ses;
+
+    const req = net.request(options);
+    for (const [k, v] of Object.entries(requestHeaders)) {
+      req.setHeader(k, v);
+    }
+
+    let responseBody = '';
+    req.on('response', (response) => {
+      const status = response.statusCode;
+      const responseHeaders = response.headers;
+
+      response.on('data', (chunk) => {
+        responseBody += chunk.toString();
+      });
+      response.on('end', () => {
+        const durationMs = Date.now() - startedAt;
+        const ok = status < 400;
+
+        logHttp({
+          kind: 'raw',
+          method: 'POST',
+          url,
+          status,
+          durationMs,
+          requestHeaders,
+          responseHeaders,
+          responseBody: truncate(responseBody),
+          ok,
+        });
+
+        if (status === 401 || status === 403) {
+          reject(new Error('AUTH_EXPIRED'));
+          return;
+        }
+        if (status >= 400) {
+          reject(new Error(`HTTP ${status} ${url} body=${truncate(responseBody)}`));
+          return;
+        }
+        resolve(responseBody);
+      });
+    });
+    req.on('error', (err) => {
+      logHttp({
+        kind: 'raw',
+        method: 'POST',
+        url,
+        durationMs: Date.now() - startedAt,
+        requestHeaders,
+        error: err.message,
+        ok: false,
+      });
+      reject(err);
+    });
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+module.exports = { makeRequest, makeRawRequest, makeRawPostRequest };

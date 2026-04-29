@@ -1,5 +1,4 @@
-const { net } = require('electron');
-const { makeRawRequest } = require('./request');
+const { makeRawPostRequest, makeRawRequest } = require('./request');
 
 const BASE = 'https://gemini.google.com';
 const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
@@ -174,54 +173,18 @@ async function batchExecute(ses, tokens, rpcId, payload) {
 
   const url = `${BATCH_EXEC}?${qs.toString()}`;
 
-  // Make POST request with cookies
-  let cookieHeader = '';
-  if (ses) {
-    // Need cookies from both .google.com and gemini.google.com
-    const cookies1 = await ses.cookies.get({ url: BASE });
-    const cookies2 = await ses.cookies.get({ url: 'https://google.com' });
-    const allCookies = [...cookies1, ...cookies2];
-    const seen = new Set();
-    const deduplicated = allCookies.filter((c) => {
-      const key = `${c.name}=${c.value}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    cookieHeader = deduplicated.map((c) => `${c.name}=${c.value}`).join('; ');
-  }
-
-  return new Promise((resolve, reject) => {
-    const options = { url, method: 'POST', useSessionCookies: true };
-    if (ses) options.session = ses;
-
-    const req = net.request(options);
-    req.setHeader('Content-Type', 'application/x-www-form-urlencoded;charset=utf-8');
-    req.setHeader('Origin', BASE);
-    req.setHeader('Referer', `${BASE}/`);
-    req.setHeader('X-Same-Domain', '1');
-    if (cookieHeader) req.setHeader('Cookie', cookieHeader);
-
-    let body = '';
-    req.on('response', (response) => {
-      if (response.statusCode === 401 || response.statusCode === 403) {
-        reject(new Error('AUTH_EXPIRED'));
-        return;
-      }
-      if (response.statusCode >= 400) {
-        reject(new Error(`API error: ${response.statusCode}`));
-        return;
-      }
-      response.on('data', (chunk) => {
-        body += chunk.toString();
-      });
-      response.on('end', () => resolve(body));
-    });
-    req.on('error', reject);
-
-    req.write(formBody.toString());
-    req.end();
-  });
+  return makeRawPostRequest(
+    url,
+    ses,
+    formBody.toString(),
+    {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+      Origin: BASE,
+      Referer: `${BASE}/`,
+      'X-Same-Domain': '1',
+    },
+    [BASE, 'https://google.com'],
+  );
 }
 
 function parseConversationList(raw) {

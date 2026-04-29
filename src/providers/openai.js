@@ -1,4 +1,5 @@
 const { makeRequest } = require('./request');
+const { withRetry } = require('./retry');
 
 const BASE = 'https://chatgpt.com';
 
@@ -131,32 +132,32 @@ const provider = {
       await new Promise((r) => setTimeout(r, delay));
 
       let success = false;
-      for (let retries = 0; retries < 5; retries++) {
-        try {
-          const full = await makeRequest(`${BASE}/backend-api/conversation/${conv.id}`, ses, {
-            Authorization: `Bearer ${token}`,
-          });
-          onConversation?.(full);
-          timestamps[conv.id] = conv.update_time;
-          fetchedCount++;
-          success = true;
-          consecutiveFails = 0;
-          delay = Math.max(3000, delay * 0.95); // Slowly ease back
-          break;
-        } catch (e) {
-          if (e.message.includes('429')) {
-            consecutiveFails++;
-            const backoff = Math.min(120000, 5000 * 2 ** retries); // 10s, 20s, 40s, 80s, 120s
-            console.log(
-              `[openai] 429 on ${i + 1}/${toFetch.length}, backoff ${backoff / 1000}s (attempt ${retries + 1}/5)`,
-            );
-            delay = Math.min(15000, delay + 2000); // Progressively slow down
-            await new Promise((r) => setTimeout(r, backoff));
-          } else {
-            console.error(`[openai] Failed ${conv.id}: ${e.message}`);
-            break;
-          }
-        }
+      try {
+        const full = await withRetry(
+          () =>
+            makeRequest(`${BASE}/backend-api/conversation/${conv.id}`, ses, {
+              Authorization: `Bearer ${token}`,
+            }),
+          {
+            maxAttempts: 5,
+            getDelayMs: (attempt) => Math.min(120000, 5000 * 2 ** (attempt - 1)),
+            onRetry: (e, attempt, maxAttempts, backoff) => {
+              consecutiveFails++;
+              console.log(
+                `[openai] HTTP ${e.statusCode} on ${i + 1}/${toFetch.length}, backoff ${backoff / 1000}s (attempt ${attempt}/${maxAttempts})`,
+              );
+              delay = Math.min(15000, delay + 2000);
+            },
+          },
+        );
+        onConversation?.(full);
+        timestamps[conv.id] = conv.update_time;
+        fetchedCount++;
+        success = true;
+        consecutiveFails = 0;
+        delay = Math.max(3000, delay * 0.95); // Slowly ease back
+      } catch (e) {
+        console.error(`[openai] Failed ${conv.id}: ${e.message}`);
       }
 
       // Log progress periodically
@@ -166,9 +167,11 @@ const provider = {
         );
       }
 
-      // If too many consecutive fails, pause longer
+      // If too many consecutive retryable failures, pause longer
       if (consecutiveFails >= 10) {
-        console.log(`[openai] ${consecutiveFails} consecutive 429s, pausing 5 minutes...`);
+        console.log(
+          `[openai] ${consecutiveFails} consecutive retryable failures, pausing 5 minutes...`,
+        );
         await new Promise((r) => setTimeout(r, 300000));
         consecutiveFails = 0;
         delay = 5000;

@@ -1,4 +1,5 @@
 const { makeRawPostRequest, makeRawRequest } = require('./request');
+const { withRetry } = require('./retry');
 
 const BASE = 'https://gemini.google.com';
 const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
@@ -172,17 +173,29 @@ async function batchExecute(ses, tokens, rpcId, payload) {
 
   const url = `${BATCH_EXEC}?${qs.toString()}`;
 
-  return makeRawPostRequest(
-    url,
-    ses,
-    formBody.toString(),
+  return withRetry(
+    () =>
+      makeRawPostRequest(
+        url,
+        ses,
+        formBody.toString(),
+        {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+          Origin: BASE,
+          Referer: `${BASE}/`,
+          'X-Same-Domain': '1',
+        },
+        [BASE, 'https://google.com'],
+      ),
     {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-      Origin: BASE,
-      Referer: `${BASE}/`,
-      'X-Same-Domain': '1',
+      maxAttempts: 3,
+      getDelayMs: (attempt) => [2000, 5000, 10000][attempt - 1] || 10000,
+      onRetry: (e, attempt, maxAttempts, delayMs) => {
+        console.log(
+          `[gemini] HTTP ${e.statusCode} on ${rpcId}, retrying in ${delayMs / 1000}s (attempt ${attempt}/${maxAttempts})`,
+        );
+      },
     },
-    [BASE, 'https://google.com'],
   );
 }
 

@@ -10,6 +10,12 @@ function truncate(s) {
     : s;
 }
 
+function createHttpError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
 async function buildCookieHeader(ses, urls) {
   if (!ses) return '';
 
@@ -94,7 +100,7 @@ async function makeRequest(url, ses, extraHeaders) {
           return;
         }
         if (status >= 400) {
-          reject(new Error(`API error: ${status} ${url} body=${truncate(body)}`));
+          reject(createHttpError(`API error: ${status} ${url} body=${truncate(body)}`, status));
           return;
         }
         if (parsed === null) {
@@ -164,7 +170,7 @@ async function makeRawRequest(url, ses) {
           return;
         }
         if (status >= 400) {
-          reject(new Error(`HTTP ${status} ${url} body=${truncate(body)}`));
+          reject(createHttpError(`HTTP ${status} ${url} body=${truncate(body)}`, status));
           return;
         }
         resolve(body);
@@ -233,7 +239,7 @@ async function makeRawPostRequest(url, ses, body, extraHeaders = {}, cookieUrls 
           return;
         }
         if (status >= 400) {
-          reject(new Error(`HTTP ${status} ${url} body=${truncate(responseBody)}`));
+          reject(createHttpError(`HTTP ${status} ${url} body=${truncate(responseBody)}`, status));
           return;
         }
         resolve(responseBody);

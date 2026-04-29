@@ -14,7 +14,18 @@ function writeConversation(vaultPath, providerSubdir, accountKey, filename, mark
     if (existing === markdownContent) return false;
   }
 
-  fs.writeFileSync(filePath, markdownContent, 'utf-8');
+  const tempPath = path.join(dir, `.${filename}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.writeFileSync(tempPath, markdownContent, 'utf-8');
+    fs.renameSync(tempPath, filePath);
+  } catch (e) {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {
+      /* ignore cleanup failure */
+    }
+    throw e;
+  }
   return true;
 }
 

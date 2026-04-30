@@ -12,16 +12,18 @@ npm start
 
 ## Release (macOS)
 
-See [docs/release.md](docs/release.md) for the full signed + notarized build
-flow. TL;DR:
+Tag a version and CI handles the rest:
 
 ```sh
-cp .env.example .env  # fill in APPLE_ID and APPLE_APP_SPECIFIC_PASSWORD
-set -a; source .env; set +a
-npm run dist:mac
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
-Signed, notarized, stapled DMG drops in `dist-electron/`.
+GitHub Actions builds a universal binary, signs with the Developer ID cert,
+notarizes via Apple, staples, and attaches the DMG + zip to a GitHub Release.
+
+For local builds, the one-time CI setup, or troubleshooting see
+[docs/release.md](docs/release.md).
 
 ## License
 

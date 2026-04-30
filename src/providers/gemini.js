@@ -11,6 +11,28 @@ const provider = {
   loginUrl: `${BASE}/app`,
   subdir: 'gemini',
   cookieName: '__Secure-1PSID',
+  parserVersion: 1,
+
+  getId(conversation) {
+    return conversation?.id || '';
+  },
+
+  getRawCache(conversation) {
+    return conversation;
+  },
+
+  parseFromCache(raw) {
+    if (raw && typeof raw._rawMsgResp === 'string') {
+      return {
+        id: raw.id,
+        title: raw.title,
+        timestamp: raw.timestamp,
+        messages: parseConversationMessages(raw._rawMsgResp),
+        _rawMsgResp: raw._rawMsgResp,
+      };
+    }
+    return raw;
+  },
 
   // Extract account info from cookies
   parseAccountFromCookies(_cookies) {
@@ -90,6 +112,7 @@ const provider = {
           title: conv.title,
           timestamp: conv.timestamp,
           messages,
+          _rawMsgResp: msgResp,
         };
         onConversation?.(full);
         timestamps[conv.id] = conv.timestamp;
@@ -111,7 +134,8 @@ const provider = {
       `title: "${title.replace(/"/g, '\\"')}"`,
       `created: ${created}`,
       'source: gemini',
-      `conversation_id: "${id}"`,
+      `id: "${id}"`,
+      `parser_version: ${provider.parserVersion}`,
       '---',
     ]
       .filter(Boolean)

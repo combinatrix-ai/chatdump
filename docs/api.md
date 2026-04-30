@@ -249,7 +249,8 @@ Gemini's API is reverse-engineered from Google's internal WIZ framework. RPC IDs
 3. Compare each conversation's timestamp against stored timestamps
 4. For changed/new conversations: fetch full conversation
 5. Convert to Markdown (with YAML frontmatter)
-6. Write to {vault}/raw/{provider}/{email}/{date}_{title}_{id}.md
+6. Write to {vault}/{provider}/{email}/{date}_{title}_{id}.md
+   Raw API response cached to {vault}/.chativist/cache/{provider}/{email}/{id}.json
 7. Update stored timestamps
 ```
 
@@ -266,7 +267,8 @@ created: 2026-01-01T00:00:00Z
 updated: 2026-01-02T00:00:00Z
 model: claude-sonnet-4-6
 source: claude
-conversation_id: "uuid-here"
+id: "uuid-here"
+parser_version: 1
 ---
 
 ## Human

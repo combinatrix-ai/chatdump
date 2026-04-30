@@ -12,6 +12,19 @@ const provider = {
   cookieName: '__Secure-next-auth.session-token',
   cookiePrefix: true,
   meEndpoint: null, // We use cookies + /api/auth/session instead
+  parserVersion: 1,
+
+  getId(conversation) {
+    return conversation?.conversation_id || conversation?.id || '';
+  },
+
+  getRawCache(conversation) {
+    return conversation;
+  },
+
+  parseFromCache(raw) {
+    return raw;
+  },
 
   // Extract account info from cookies (primary method)
   parseAccountFromCookies(cookies) {
@@ -205,7 +218,8 @@ const provider = {
       `updated: ${updated}`,
       model ? `model: ${model}` : null,
       'source: chatgpt',
-      `conversation_id: "${id}"`,
+      `id: "${id}"`,
+      `parser_version: ${provider.parserVersion}`,
       '---',
     ]
       .filter(Boolean)

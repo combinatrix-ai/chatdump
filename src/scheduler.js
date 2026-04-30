@@ -2,6 +2,8 @@ const { store, getAccounts, getAccount, updateAccount, getVaultPath } = require(
 const { ensureAuthenticated, getSession } = require('./auth');
 const { getProvider } = require('./providers');
 const { writeConversation } = require('./writer');
+const { writeRawCache } = require('./cache');
+const { reparseOutdated } = require('./reparse');
 const { appendLog } = require('./synclog');
 
 let timeoutId = null;
@@ -31,7 +33,11 @@ function setProgress(accountId, text) {
   else accountProgress.delete(accountId);
 }
 
-function getConversationId(conv) {
+function getConversationId(conv, provider) {
+  if (provider?.getId) {
+    const id = provider.getId(conv);
+    if (id) return id;
+  }
   return conv?.uuid || conv?.conversation_id || conv?.id || 'unknown';
 }
 
@@ -77,6 +83,23 @@ async function syncAccount(accountId, onStatus) {
       return;
     }
 
+    try {
+      const reparsed = reparseOutdated(vaultPath, provider, account.email || account.id);
+      if (reparsed > 0) {
+        appendLog(accountId, {
+          level: 'info',
+          message: `Reparsed ${reparsed} file(s) to parser_version ${provider.parserVersion}`,
+        });
+      }
+    } catch (e) {
+      console.error(`[${account.provider}] Reparse failed: ${e.message}`);
+      appendLog(accountId, {
+        level: 'error',
+        message: `Reparse failed: ${e.message}`,
+        detail: e.stack || e.message,
+      });
+    }
+
     setProgress(accountId, 'Fetching…');
     onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
 
@@ -91,23 +114,28 @@ async function syncAccount(accountId, onStatus) {
       let failedWrites = 0;
       let saveCounter = 0;
 
+      const accountKey = account.email || account.id;
+
       // onConversation callback: write each conversation immediately as it's fetched
       const onConversation = (conv) => {
         fetched++;
         try {
+          const id = getConversationId(conv, provider);
+          if (id && id !== 'unknown') {
+            const rawPayload = provider.getRawCache ? provider.getRawCache(conv) : conv;
+            try {
+              writeRawCache(vaultPath, provider.subdir, accountKey, id, rawPayload);
+            } catch (e) {
+              console.error(`[${account.provider}] Cache write failed for ${id}: ${e.message}`);
+            }
+          }
           const md = provider.convertToMarkdown(conv);
           const filename = provider.makeFilename(conv);
-          const changed = writeConversation(
-            vaultPath,
-            provider.subdir,
-            account.email || account.id,
-            filename,
-            md,
-          );
+          const changed = writeConversation(vaultPath, provider.subdir, accountKey, filename, md);
           if (changed) written++;
         } catch (e) {
           failedWrites++;
-          const convId = getConversationId(conv);
+          const convId = getConversationId(conv, provider);
           const msg = `Write failed for ${convId}: ${e.message}`;
           appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
           console.error(`[${account.provider}] ${msg}`);

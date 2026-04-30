@@ -10,6 +10,19 @@ const provider = {
   subdir: 'claude',
   cookieName: 'sessionKey',
   meEndpoint: `${BASE}/api/bootstrap`,
+  parserVersion: 1,
+
+  getId(conversation) {
+    return conversation?.uuid || '';
+  },
+
+  getRawCache(conversation) {
+    return conversation;
+  },
+
+  parseFromCache(raw) {
+    return raw;
+  },
 
   parseAccountInfo(bootstrap) {
     const email = bootstrap?.account?.email_address || '';
@@ -96,7 +109,8 @@ const provider = {
       `updated: ${updated}`,
       model ? `model: ${model}` : null,
       'source: claude',
-      `conversation_id: "${id}"`,
+      `id: "${id}"`,
+      `parser_version: ${provider.parserVersion}`,
       '---',
     ]
       .filter(Boolean)

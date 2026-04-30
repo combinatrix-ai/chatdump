@@ -1,18 +1,37 @@
 {
-  "name": "webui-sync",
+  "name": "chativist",
+  "productName": "Chativist",
   "version": "1.0.0",
-  "description": "Sync claude.ai conversations to Obsidian vault as Markdown",
+  "description": "Archive your AI chat conversations (Claude, ChatGPT, Gemini) to an Obsidian vault as Markdown.",
+  "author": {
+    "name": "Yotaro Katayama",
+    "email": "yotaro.katayama@combinatrix.ai"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/hmirin/webui-sync",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hmirin/webui-sync.git"
+  },
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
     "lint": "biome check src",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
     "knip": "knip"
   },
   "build": {
-    "appId": "com.webui-sync.app",
+    "appId": "ai.combinatrix.chativist",
+    "productName": "Chativist",
+    "copyright": "Copyright © 2026 Yotaro Katayama",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist-electron"
+    },
     "files": [
       "src/**/*",
       "assets/iconTemplate.png",
@@ -21,7 +40,31 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "assets/icon.png"
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false
+    },
+    "afterSign": "build/notarize.js",
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "build/icon.icns"
     }
   },
   "dependencies": {
@@ -29,6 +72,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
+    "@electron/notarize": "^2.5.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "knip": "^6.7.0"

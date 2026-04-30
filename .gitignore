@@ -1,5 +1,10 @@
 node_modules/
 dist/
+dist-electron/
 raw/
 *.log
+*.dmg
+*.zip
 .DS_Store
+.env
+.env.local

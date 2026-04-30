@@ -273,6 +273,7 @@ function buildMenu() {
           /* ignore */
         }
 
+        let syncId = accountId;
         if (info?.email) {
           const realId = `${prov.name}:${info.email}`;
           // Remove temp entry, create proper one
@@ -290,12 +291,18 @@ function buildMenu() {
             name: info.name,
             status: 'ok',
           });
+          syncId = realId;
         } else if (info?.name) {
           // Got name but no email — update the temp entry
           updateAccount(accountId, { name: info.name });
         }
 
         buildMenu();
+
+        // Kick off the first sync immediately after a successful add.
+        syncAccount(syncId, onStatus).catch((e) => {
+          console.error(`Initial sync failed for ${syncId}: ${e.message}`);
+        });
       } catch (e) {
         console.error(`Add account failed: ${e.message}`);
       }

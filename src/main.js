@@ -1,9 +1,25 @@
 const { app, session } = require('electron');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createTray } = require('./tray');
 const { startScheduler, stopScheduler, setMenuRefreshCallback } = require('./scheduler');
 const { store, getAccounts } = require('./store');
 const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
+
+function ensureDefaultVaultPath() {
+  if (store.get('defaultVaultPath')) return;
+  const fallback = path.join(os.homedir(), 'chativist');
+  try {
+    fs.mkdirSync(fallback, { recursive: true });
+  } catch (e) {
+    console.error(`[main] Failed to create default vault at ${fallback}: ${e.message}`);
+    return;
+  }
+  store.set('defaultVaultPath', fallback);
+  console.log(`[main] Default vault initialised at ${fallback}`);
+}
 const {
   ENABLED: DEBUG_ENABLED,
   BODY_ENABLED: DEBUG_BODY_ENABLED,
@@ -54,6 +70,7 @@ async function migrateCookies() {
 }
 
 app.whenReady().then(async () => {
+  ensureDefaultVaultPath();
   await migrateCookies();
 
   const { onStatus, buildMenu } = createTray();

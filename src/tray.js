@@ -404,6 +404,7 @@ function buildMenu() {
   const menu = Menu.buildFromTemplate(template);
   tray.setContextMenu(menu);
   tray.setToolTip(`webui-sync — ${header}`);
+  applyTrayIcon();
 }
 
 function onStatus(_state, _message, _accountId) {
@@ -451,12 +452,25 @@ async function clearSessionStorage(ses, label) {
   }
 }
 
-function createTray() {
-  const iconPath = path.join(__dirname, '..', 'assets', 'iconTemplate.png');
-  const icon = nativeImage.createFromPath(iconPath);
-  icon.setTemplateImage(true);
+let idleIcon = null;
+let syncingIcon = null;
 
-  tray = new Tray(icon);
+function loadIcon(name) {
+  const img = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', name));
+  img.setTemplateImage(true);
+  return img;
+}
+
+function applyTrayIcon() {
+  if (!tray) return;
+  tray.setImage(getSyncingCount() > 0 ? syncingIcon : idleIcon);
+}
+
+function createTray() {
+  idleIcon = loadIcon('iconTemplate.png');
+  syncingIcon = loadIcon('iconTemplate-syncing.png');
+
+  tray = new Tray(idleIcon);
   buildMenu();
 
   return { tray, onStatus, buildMenu };

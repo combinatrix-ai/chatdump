@@ -41,7 +41,7 @@ function getConversationId(conv, provider) {
   return conv?.uuid || conv?.conversation_id || conv?.id || 'unknown';
 }
 
-async function syncAccount(accountId, onStatus) {
+async function syncAccount(accountId, onStatus, options = {}) {
   if (syncingAccounts.has(accountId)) {
     console.log(`[sync] ${accountId} already syncing, skipping`);
     return;
@@ -66,7 +66,10 @@ async function syncAccount(accountId, onStatus) {
       return;
     }
 
-    appendLog(accountId, { level: 'info', message: 'Sync started' });
+    const startLabel = options.mode?.startsWith('fix-order:')
+      ? `Fix-order sync started (${options.mode.slice('fix-order:'.length)})`
+      : 'Sync started';
+    appendLog(accountId, { level: 'info', message: startLabel });
     updateAccount(accountId, { lastError: null });
     setProgress(accountId, 'Authenticating…');
     onMenuRefresh?.();
@@ -168,6 +171,7 @@ async function syncAccount(accountId, onStatus) {
           }
         },
         onConversation,
+        options,
       );
 
       const now = new Date().toISOString();

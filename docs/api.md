@@ -82,7 +82,7 @@ webui-sync fetches conversations from three AI chat providers. Each has a differ
 
 ### Update Detection
 - The list API returns `update_time` for each conversation.
-- `GET /backend-api/conversation/{id}` can touch ChatGPT's server-side `update_time`, causing the official ChatGPT UI ordering to change.
+- **Read-bumps-update_time**: Simply calling `GET /backend-api/conversation/{id}` (a read, no edits) bumps the server-side `update_time` for that conversation. As a side effect, the conversation moves to the top of the list returned by `/backend-api/conversations`, and the official ChatGPT UI re-orders accordingly. There is no known read-only variant.
 - After a full fetch, store the touched full-conversation `update_time` for future sync checks so the same conversation is not re-fetched every run.
 - Do not use the full-conversation top-level `update_time` as Markdown `updated`; after fetch it can represent fetch/read time.
 - Markdown `updated` is derived from the maximum `message.create_time` on the current visible conversation path.

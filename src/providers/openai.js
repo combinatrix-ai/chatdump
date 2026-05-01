@@ -88,7 +88,8 @@ const provider = {
     }
   },
 
-  async fetchConversations(ses, timestamps, onProgress, onConversation) {
+  async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
+    const mode = options.mode || 'sync';
     let token = await provider.getAccessToken(ses);
     if (!token) {
       throw new Error('AUTH_EXPIRED');
@@ -116,13 +117,26 @@ const provider = {
       offset += limit;
     }
 
-    const toFetch = allConvs.filter((c) => {
-      const last = normalizeTimestamp(timestamps[c.id]);
-      const current = normalizeTimestamp(c.update_time);
-      return !last || last !== current;
-    });
-
-    console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
+    let toFetch;
+    if (mode === 'fix-order:created_at' || mode === 'fix-order:last_message_at') {
+      // Touch every conversation in ascending order so the LAST one accessed becomes
+      // the most-recently-updated on chatgpt.com. After this run, list order on
+      // chatgpt.com matches the chosen criterion (newest at top).
+      const sortKey = mode === 'fix-order:created_at' ? 'created_at' : 'last_message_at';
+      toFetch = [...allConvs].sort(
+        (a, b) => sortKeyMs(a, sortKey, timestamps) - sortKeyMs(b, sortKey, timestamps),
+      );
+      console.log(
+        `[openai] fix-order mode: touching all ${toFetch.length} conversations by ${sortKey} ascending`,
+      );
+    } else {
+      toFetch = allConvs.filter((c) => {
+        const last = timestamps[c.id]?.update_time;
+        const current = normalizeTimestamp(c.update_time);
+        return !last || last !== current;
+      });
+      console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
+    }
     let fetchedCount = 0;
 
     let delay = 5000; // 5s between requests — ChatGPT rate limits aggressively
@@ -165,8 +179,12 @@ const provider = {
           },
         );
         onConversation?.(full);
-        timestamps[conv.id] =
-          normalizeTimestamp(full.update_time) || normalizeTimestamp(conv.update_time);
+        const pathMessages = getCurrentPathMessages(full.mapping || {}, full.current_node);
+        timestamps[conv.id] = {
+          update_time: normalizeTimestamp(full.update_time) || normalizeTimestamp(conv.update_time),
+          create_time: normalizeTimestamp(full.create_time) || normalizeTimestamp(conv.create_time),
+          last_message_at: getLatestMessageCreateTime(pathMessages) || null,
+        };
         fetchedCount++;
         success = true;
         consecutiveFails = 0;
@@ -284,6 +302,15 @@ function getCurrentPathMessages(mapping, currentNodeId) {
   }
 
   return messages;
+}
+
+function sortKeyMs(conv, key, timestamps) {
+  const stored = timestamps[conv.id];
+  if (key === 'created_at') {
+    return timestampToEpochMs(conv.create_time) ?? timestampToEpochMs(stored?.create_time) ?? 0;
+  }
+  // last_message_at — falls back to list update_time when not yet stored locally
+  return timestampToEpochMs(stored?.last_message_at) ?? timestampToEpochMs(conv.update_time) ?? 0;
 }
 
 function getLatestMessageCreateTime(messages) {

@@ -111,15 +111,15 @@ function buildMenu() {
 
     if (account.provider === 'openai') {
       sub.push({
-        label: 'Fix and sync by order',
+        label: 'Fix order',
         enabled: !syncing,
         submenu: [
           {
-            label: 'By created_at',
+            label: 'by created_at',
             click: () => syncAccount(account.id, onStatus, { mode: 'fix-order:created_at' }),
           },
           {
-            label: 'By last message time',
+            label: 'by last message time',
             click: () => syncAccount(account.id, onStatus, { mode: 'fix-order:last_message_at' }),
           },
         ],

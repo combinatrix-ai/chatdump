@@ -12,24 +12,6 @@ const store = new Store({
   },
 });
 
-// One-time migration: openai timestamps schema changed from `{ [id]: isoString }` to
-// `{ [id]: { update_time, create_time, last_message_at } }`. Reset legacy entries so
-// the next sync rebuilds them with the new shape. Account info is preserved.
-(() => {
-  const accounts = store.get('accounts') || [];
-  let mutated = false;
-  for (const account of accounts) {
-    if (account.provider !== 'openai') continue;
-    const ts = account.timestamps || {};
-    const hasLegacy = Object.values(ts).some((v) => typeof v === 'string');
-    if (hasLegacy) {
-      account.timestamps = {};
-      mutated = true;
-    }
-  }
-  if (mutated) store.set('accounts', accounts);
-})();
-
 // --- Account helpers ---
 
 function getAccounts() {

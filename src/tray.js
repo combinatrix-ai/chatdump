@@ -94,6 +94,14 @@ function buildMenu() {
       sub.push({ type: 'separator' });
     }
 
+    if (account.provider === 'openai') {
+      sub.push({
+        label: '! Syncing may reorder chats on chatgpt.com inevitably',
+        enabled: false,
+      });
+      sub.push({ type: 'separator' });
+    }
+
     const syncing = isSyncing(account.id);
     sub.push({
       label: syncing ? 'Syncing...' : 'Sync Now',

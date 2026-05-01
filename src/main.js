@@ -1,3 +1,13 @@
+// Swallow EPIPE on stdout/stderr — happens when the launching terminal goes away
+// while the detached Electron process keeps running. Without this, any later
+// console.log/error throws and crashes the app.
+process.stdout.on('error', (e) => {
+  if (e.code !== 'EPIPE') throw e;
+});
+process.stderr.on('error', (e) => {
+  if (e.code !== 'EPIPE') throw e;
+});
+
 const { app, session } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');

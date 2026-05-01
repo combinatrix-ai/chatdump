@@ -115,30 +115,37 @@ function openLoginWindow(providerName, accountId) {
       resolve({ cookie, session: ses, partition: partitionName, accountInfo, cookies: allCookies });
     }
 
+    function isAuthPageUrl(url) {
+      return /\/(auth|login|signin|signup|sign-in|sign-up|oauth|authorize)/i.test(url);
+    }
+
+    async function tryFinish(triggerLabel) {
+      if (resolved || win.isDestroyed()) return;
+      const currentUrl = win.webContents.getURL();
+      // Don't resolve while still on a login/auth page — providers rotate
+      // session cookies during the login flow before the user has actually authenticated.
+      if (isAuthPageUrl(currentUrl)) {
+        console.log(`[auth] Ignoring ${triggerLabel} while on auth page: ${currentUrl}`);
+        return;
+      }
+      const value = await findAuthCookie(ses, prov);
+      if (value) finish(value);
+    }
+
     function onCookieChanged(_event, cookie, _cause, removed) {
       if (removed) return;
-      // Match exact name or prefix (e.g. cookieName.0, cookieName.1)
+      // Match exact name or prefix (e.g. cookieName.0, cookieName.1).
+      // We don't gate on cookie.domain — providers like Gemini set the auth cookie
+      // on a parent domain (.google.com) which wouldn't equal gemini.google.com.
+      // findAuthCookie scopes by url and enforces correct cookie scoping.
       const matches =
         cookie.name === prov.cookieName ||
         (prov.cookiePrefix && cookie.name.startsWith(prov.cookieName));
       if (!matches) return;
 
-      const domain = new URL(prov.baseUrl).hostname;
-      if (cookie.domain === domain || cookie.domain === `.${domain}`) {
-        console.log(`[auth] Cookie ${cookie.name} set for ${cookie.domain}`);
-        // Delay to let all split cookies arrive
-        setTimeout(async () => {
-          // Don't resolve if we're still on a login/auth page — ChatGPT rotates
-          // session cookies during the login flow before the user has actually authenticated.
-          const currentUrl = win.isDestroyed() ? '' : win.webContents.getURL();
-          if (/\/(auth|login|signin|signup|sign-in|sign-up|oauth|authorize)/i.test(currentUrl)) {
-            console.log(`[auth] Ignoring cookie change while on auth page: ${currentUrl}`);
-            return;
-          }
-          const value = await findAuthCookie(ses, prov);
-          if (value) finish(value);
-        }, 1000);
-      }
+      console.log(`[auth] Cookie ${cookie.name} set for ${cookie.domain}`);
+      // Delay to let all split cookies arrive
+      setTimeout(() => tryFinish('cookie change'), 1000);
     }
 
     ses.cookies.on('changed', onCookieChanged);
@@ -146,6 +153,11 @@ function openLoginWindow(providerName, accountId) {
     win.webContents.on('did-navigate', async () => {
       const url = win.webContents.getURL();
       console.log(`[auth] Navigate: ${url}`);
+      // Navigations away from the auth flow (e.g. redirect to gemini.google.com/app
+      // after Google login) commonly happen *after* the auth cookie was already set,
+      // so onCookieChanged may have fired and bailed while we were still on a /signin URL.
+      // Re-check on the post-redirect URL.
+      setTimeout(() => tryFinish('navigation'), 500);
     });
 
     win.on('closed', async () => {

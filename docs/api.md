@@ -76,14 +76,17 @@ webui-sync fetches conversations from three AI chat providers. Each has a differ
 
 ### Deduplication
 - **Unique key**: `conversation.id` (UUID v4, e.g. `69d2543c-224a-40b1-be65-bcdfb6a8bc2a`)
-- **Stored in timestamps**: `{ [id]: update_time }` where `update_time` is a Unix timestamp (seconds, float)
-- **Change detection**: Compare `conversation.update_time` from the list API against stored value.
+- **Stored in timestamps**: `{ [id]: update_time }`, normalized to ISO milliseconds.
+- **Change detection**: Compare normalized `conversation.update_time` from the list API against stored value.
 - **File naming**: `{YYYY-MM-DD}_{sanitized_title}_{id_first8}.md`
 
 ### Update Detection
 - The list API returns `update_time` for each conversation.
-- When a new message is added, `update_time` changes.
-- Full conversation is re-fetched and Markdown is overwritten.
+- `GET /backend-api/conversation/{id}` can touch ChatGPT's server-side `update_time`, causing the official ChatGPT UI ordering to change.
+- After a full fetch, store the touched full-conversation `update_time` for future sync checks so the same conversation is not re-fetched every run.
+- Do not use the full-conversation top-level `update_time` as Markdown `updated`; after fetch it can represent fetch/read time.
+- Markdown `updated` is derived from the maximum `message.create_time` on the current visible conversation path.
+- Full conversation JSON is still written to raw cache; Markdown is overwritten from the current path.
 
 ### Rate Limiting
 - ChatGPT's backend-api rate limits **aggressively** (HTTP 429).
@@ -104,6 +107,7 @@ ChatGPT uses a **tree structure** with a `mapping` object:
   "title": "...",
   "create_time": 1700000000.0,
   "update_time": 1700001000.0,
+  "current_node": "node-id-2",
   "default_model_slug": "gpt-4o",
   "conversation_id": "...",
   "mapping": {
@@ -113,6 +117,8 @@ ChatGPT uses a **tree structure** with a `mapping` object:
       "children": ["node-id-2"],
       "message": {
         "author": { "role": "user" },
+        "create_time": 1700000000.0,
+        "update_time": null,
         "content": { "parts": ["user message text"] }
       }
     },
@@ -122,13 +128,17 @@ ChatGPT uses a **tree structure** with a `mapping` object:
       "children": [],
       "message": {
         "author": { "role": "assistant" },
+        "create_time": 1700001000.0,
+        "update_time": null,
         "content": { "parts": ["assistant response text"] }
       }
     }
   }
 }
 ```
-Messages are flattened by walking the tree from root (node with no parent) following `children` links.
+Messages are flattened by walking backward from `current_node` through `parent` links, then reversing the path. This matches the branch currently visible in the ChatGPT UI. Edited prompts create sibling branches in `mapping`; old branches remain in raw cache but are not included in Markdown unless they are on the current path.
+
+`message.update_time` exists in the response shape, but observed messages normally have `null` there, including edited messages. Edited messages are represented as new message nodes with new `create_time` values.
 
 ---
 

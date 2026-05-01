@@ -12,7 +12,7 @@ const provider = {
   cookieName: '__Secure-next-auth.session-token',
   cookiePrefix: true,
   meEndpoint: null, // We use cookies + /api/auth/session instead
-  parserVersion: 1,
+  parserVersion: 2,
 
   getId(conversation) {
     return conversation?.conversation_id || conversation?.id || '';
@@ -117,8 +117,9 @@ const provider = {
     }
 
     const toFetch = allConvs.filter((c) => {
-      const last = timestamps[c.id];
-      return !last || last !== c.update_time;
+      const last = normalizeTimestamp(timestamps[c.id]);
+      const current = normalizeTimestamp(c.update_time);
+      return !last || last !== current;
     });
 
     console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
@@ -164,7 +165,8 @@ const provider = {
           },
         );
         onConversation?.(full);
-        timestamps[conv.id] = conv.update_time;
+        timestamps[conv.id] =
+          normalizeTimestamp(full.update_time) || normalizeTimestamp(conv.update_time);
         fetchedCount++;
         success = true;
         consecutiveFails = 0;
@@ -202,12 +204,12 @@ const provider = {
 
   convertToMarkdown(conversation) {
     const title = conversation.title || 'Untitled';
-    const created = conversation.create_time
-      ? new Date(conversation.create_time * 1000).toISOString()
-      : '';
-    const updated = conversation.update_time
-      ? new Date(conversation.update_time * 1000).toISOString()
-      : '';
+    const created = timestampToIso(conversation.create_time);
+    const pathMessages = getCurrentPathMessages(
+      conversation.mapping || {},
+      conversation.current_node,
+    );
+    const updated = getLatestMessageCreateTime(pathMessages);
     const model = conversation.default_model_slug || '';
     const id = conversation.conversation_id || conversation.id || '';
 
@@ -225,7 +227,7 @@ const provider = {
       .filter(Boolean)
       .join('\n');
 
-    const messages = flattenMessages(conversation.mapping || {});
+    const messages = flattenMessages(pathMessages);
     const body = messages
       .map((msg) => {
         const role = msg.role === 'user' ? 'User' : msg.role === 'assistant' ? 'Assistant' : null;
@@ -239,23 +241,34 @@ const provider = {
   },
 
   makeFilename(conversation) {
-    const created = conversation.create_time
-      ? new Date(conversation.create_time * 1000).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
+    const created =
+      timestampToIso(conversation.create_time).slice(0, 10) ||
+      new Date().toISOString().slice(0, 10);
     const title = sanitize(conversation.title || 'untitled');
     const idSuffix = (conversation.conversation_id || conversation.id || '').slice(0, 8);
     return `${created}_${title}_${idSuffix}.md`;
   },
 };
 
-function flattenMessages(mapping) {
-  const nodes = Object.values(mapping);
-  const current = nodes.find((n) => !n.parent);
-  if (!current) return [];
+function getCurrentPathMessages(mapping, currentNodeId) {
+  const start = currentNodeId ? mapping[currentNodeId] : null;
+  if (start) {
+    const path = [];
+    const visited = new Set();
+    let node = start;
+
+    while (node && !visited.has(node.id)) {
+      visited.add(node.id);
+      if (node.message) path.push(node.message);
+      node = mapping[node.parent];
+    }
+
+    return path.reverse();
+  }
 
   const messages = [];
   const visited = new Set();
-  const queue = [current];
+  const queue = Object.values(mapping).filter((n) => !n.parent);
 
   while (queue.length > 0) {
     const node = queue.shift();
@@ -263,13 +276,7 @@ function flattenMessages(mapping) {
     visited.add(node.id);
 
     if (node.message?.content?.parts) {
-      const text = node.message.content.parts.filter((p) => typeof p === 'string').join('\n\n');
-      if (text.trim()) {
-        messages.push({
-          role: node.message.author?.role || 'unknown',
-          text,
-        });
-      }
+      messages.push(node.message);
     }
 
     const children = (node.children || []).map((id) => mapping[id]).filter(Boolean);
@@ -277,6 +284,47 @@ function flattenMessages(mapping) {
   }
 
   return messages;
+}
+
+function getLatestMessageCreateTime(messages) {
+  const latest = messages
+    .map((message) => timestampToEpochMs(message.create_time))
+    .filter((createTime) => typeof createTime === 'number')
+    .reduce((max, createTime) => Math.max(max, createTime), 0);
+
+  return latest ? new Date(latest).toISOString() : '';
+}
+
+function normalizeTimestamp(value) {
+  const iso = timestampToIso(value);
+  return iso || null;
+}
+
+function timestampToIso(value) {
+  const ms = timestampToEpochMs(value);
+  return typeof ms === 'number' ? new Date(ms).toISOString() : '';
+}
+
+function timestampToEpochMs(value) {
+  if (typeof value === 'number') return Math.floor(value * 1000);
+  if (typeof value !== 'string' || !value) return null;
+
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function flattenMessages(messages) {
+  return messages
+    .filter((message) => message?.content?.parts)
+    .map((message) => {
+      const text = message.content.parts.filter((p) => typeof p === 'string').join('\n\n');
+      if (!text.trim()) return null;
+      return {
+        role: message.author?.role || 'unknown',
+        text,
+      };
+    })
+    .filter(Boolean);
 }
 
 function sanitize(name) {

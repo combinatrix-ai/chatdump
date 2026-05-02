@@ -139,7 +139,13 @@ const provider = {
     }
     let fetchedCount = 0;
 
-    let delay = 5000; // 5s between requests — ChatGPT rate limits aggressively
+    // ChatGPT (via Cloudflare) does not return Retry-After on 429, so we can't react
+    // smartly — only stay below the threshold. 10s base + ±20% jitter avoids the
+    // synchronized-burst pattern that Cloudflare's bot management seems to flag.
+    let delay = 10000;
+    const minDelay = 8000;
+    const maxDelay = 30000;
+    const jitter = (ms) => Math.round(ms * (0.8 + Math.random() * 0.4));
     let consecutiveFails = 0;
 
     for (let i = 0; i < toFetch.length; i++) {
@@ -157,7 +163,7 @@ const provider = {
         }
       }
 
-      await new Promise((r) => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, jitter(delay)));
 
       let success = false;
       try {
@@ -174,7 +180,7 @@ const provider = {
               console.log(
                 `[openai] HTTP ${e.statusCode} on ${i + 1}/${toFetch.length}, backoff ${backoff / 1000}s (attempt ${attempt}/${maxAttempts})`,
               );
-              delay = Math.min(15000, delay + 2000);
+              delay = Math.min(maxDelay, delay + 3000);
             },
           },
         );
@@ -188,7 +194,7 @@ const provider = {
         fetchedCount++;
         success = true;
         consecutiveFails = 0;
-        delay = Math.max(3000, delay * 0.95); // Slowly ease back
+        delay = Math.max(minDelay, delay * 0.95); // Slowly ease back
       } catch (e) {
         console.error(`[openai] Failed ${conv.id}: ${e.message}`);
       }
@@ -207,7 +213,7 @@ const provider = {
         );
         await new Promise((r) => setTimeout(r, 300000));
         consecutiveFails = 0;
-        delay = 5000;
+        delay = 10000;
         // Refresh token after long pause
         try {
           const newToken = await provider.getAccessToken(ses);

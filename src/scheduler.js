@@ -154,7 +154,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
           const shortMsg = customMsg
             ? customMsg
             : total != null
-              ? `${current}/${total} (${written} written)`
+              ? `${current}/${total} (${written} updated)`
               : `${current} processed`;
           setProgress(accountId, shortMsg);
           onStatus?.('syncing', `${provider.displayName}: ${shortMsg}`, accountId);

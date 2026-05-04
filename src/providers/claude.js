@@ -5,6 +5,7 @@ const BASE = 'https://claude.ai';
 const provider = {
   name: 'claude',
   displayName: 'Claude',
+  iconAsset: 'assets/providers/claude.png',
   baseUrl: BASE,
   loginUrl: `${BASE}/login`,
   subdir: 'claude',

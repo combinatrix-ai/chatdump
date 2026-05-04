@@ -21,6 +21,17 @@ const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
 
 let tray = null;
+const providerIconCache = new Map();
+function providerIcon(provider) {
+  if (!provider?.iconAsset) return undefined;
+  if (providerIconCache.has(provider.name)) return providerIconCache.get(provider.name);
+  const img = nativeImage
+    .createFromPath(path.join(__dirname, '..', provider.iconAsset))
+    .resize({ width: 16, height: 16 });
+  img.setTemplateImage(true);
+  providerIconCache.set(provider.name, img);
+  return img;
+}
 
 function shortenError(msg) {
   if (!msg) return '';
@@ -280,7 +291,8 @@ function buildMenu() {
     });
 
     return {
-      label: `${displayName}: ${label} ${trailing}`,
+      label: `${label} ${trailing}`,
+      icon: providerIcon(provider),
       submenu: sub,
     };
   });

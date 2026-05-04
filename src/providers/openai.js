@@ -6,6 +6,7 @@ const BASE = 'https://chatgpt.com';
 const provider = {
   name: 'openai',
   displayName: 'ChatGPT',
+  iconAsset: 'assets/providers/openai.png',
   baseUrl: BASE,
   loginUrl: `${BASE}/auth/login`,
   subdir: 'chatgpt',

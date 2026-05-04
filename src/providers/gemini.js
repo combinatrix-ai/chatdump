@@ -7,6 +7,7 @@ const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
 const provider = {
   name: 'gemini',
   displayName: 'Gemini',
+  iconAsset: 'assets/providers/gemini.png',
   baseUrl: BASE,
   loginUrl: `${BASE}/app`,
   subdir: 'gemini',

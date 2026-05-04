@@ -11,6 +11,7 @@ const {
 const {
   syncAccount,
   syncAll,
+  stopSync,
   isSyncing,
   getAccountProgress,
   getSyncingCount,
@@ -96,33 +97,73 @@ function buildMenu() {
 
     if (account.provider === 'openai') {
       sub.push({
-        label: '! Syncing may reorder chats on chatgpt.com inevitably',
+        label: "ⓘ Reading a chat moves it to the top of chatgpt.com's sidebar.",
         enabled: false,
       });
+      sub.push({
+        label: '  Sync Now reads only the chosen recent window. Full sync',
+        enabled: false,
+      });
+      sub.push({
+        label: '  goes through every chat — slow but refreshes everything',
+        enabled: false,
+      });
+      sub.push({ label: '  and reorders the whole sidebar.', enabled: false });
       sub.push({ type: 'separator' });
     }
 
     const syncing = isSyncing(account.id);
-    sub.push({
-      label: syncing ? 'Syncing...' : 'Sync Now',
-      enabled: !syncing,
-      click: () => syncAccount(account.id, onStatus),
-    });
-
-    if (account.provider === 'openai') {
+    if (syncing) {
       sub.push({
-        label: 'Fix order',
+        label: 'Stop Syncing',
+        click: () => stopSync(account.id),
+      });
+    } else if (account.provider === 'openai') {
+      const windowDays = account.syncWindowDays ?? 30;
+      sub.push({
+        label: `Sync Now (${windowDays} days)`,
+        click: () => syncAccount(account.id, onStatus),
+      });
+
+      const SYNC_WINDOWS = [1, 7, 30, 90];
+      sub.push({
+        label: 'Sync window',
+        enabled: !syncing,
+        submenu: SYNC_WINDOWS.map((d) => ({
+          label: d === 30 ? `Last ${d} days  (Default)` : `Last ${d} day${d === 1 ? '' : 's'}`,
+          type: 'radio',
+          checked: windowDays === d,
+          click: () => {
+            updateAccount(account.id, { syncWindowDays: d });
+            buildMenu();
+          },
+        })),
+      });
+
+      sub.push({
+        label: 'Full sync',
         enabled: !syncing,
         submenu: [
           {
-            label: 'by created_at',
-            click: () => syncAccount(account.id, onStatus, { mode: 'fix-order:created_at' }),
+            label: 'ⓘ Reads every chat in your chosen order. Your chatgpt.com sidebar',
+            enabled: false,
+          },
+          { label: '  ends up sorted that way too. Slow — hours to days.', enabled: false },
+          { type: 'separator' },
+          {
+            label: 'by Creation date',
+            click: () => syncAccount(account.id, onStatus, { mode: 'full-sync:created_at' }),
           },
           {
-            label: 'by last message time',
-            click: () => syncAccount(account.id, onStatus, { mode: 'fix-order:last_message_at' }),
+            label: 'by Last message time',
+            click: () => syncAccount(account.id, onStatus, { mode: 'full-sync:last_message_at' }),
           },
         ],
+      });
+    } else {
+      sub.push({
+        label: 'Sync Now',
+        click: () => syncAccount(account.id, onStatus),
       });
     }
 
@@ -249,6 +290,40 @@ function buildMenu() {
     label: prov.displayName,
     click: async () => {
       try {
+        if (prov.name === 'openai' && !store.get('chatgpt.skipAddAccountWarning', false)) {
+          if (process.platform === 'darwin') app.dock?.show();
+          let proceed = false;
+          let dontShowAgain = false;
+          try {
+            const focusWin = new BrowserWindow({ show: false });
+            const res = await dialog.showMessageBox(focusWin, {
+              type: 'info',
+              buttons: ['Sign in to ChatGPT', 'Cancel'],
+              defaultId: 0,
+              cancelId: 1,
+              title: 'Heads up — ChatGPT-only side effect',
+              message: "Reading a chat inevitably bumps it to the top of ChatGPT's sidebar.",
+              detail:
+                "ChatGPT's API has no read-only fetch — every conversation chativist " +
+                'reads bumps its server-side update_time, so threads jump to the top ' +
+                'of your ChatGPT sidebar one by one as sync runs.\n\n' +
+                'chativist reads them oldest-touched first, so once sync finishes the ' +
+                'sidebar settles back to its natural order (most-recently-used at top). ' +
+                'The disturbance is temporary.\n\n' +
+                'Claude and Gemini are not affected.',
+              checkboxLabel: "Don't show this again",
+              checkboxChecked: false,
+              noLink: true,
+            });
+            focusWin.destroy();
+            proceed = res.response === 0;
+            dontShowAgain = res.checkboxChecked;
+          } finally {
+            if (process.platform === 'darwin') app.dock?.hide();
+          }
+          if (!proceed) return;
+          if (dontShowAgain) store.set('chatgpt.skipAddAccountWarning', true);
+        }
         const result = await openLoginWindow(prov.name);
         const tempSes = result.session;
 

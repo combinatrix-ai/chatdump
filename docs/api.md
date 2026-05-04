@@ -83,10 +83,17 @@ webui-sync fetches conversations from three AI chat providers. Each has a differ
 ### Update Detection
 - The list API returns `update_time` for each conversation.
 - **Read-bumps-update_time**: Simply calling `GET /backend-api/conversation/{id}` (a read, no edits) bumps the server-side `update_time` for that conversation. As a side effect, the conversation moves to the top of the list returned by `/backend-api/conversations`, and the official ChatGPT UI re-orders accordingly. There is no known read-only variant.
+- **Sync iteration order**: Regular sync reads the to-fetch list in **reverse list-API order** (oldest-touched first). Because each read bumps `update_time`, walking oldest→newest means the final touched conversation ends up topmost on the server, and the chatgpt.com sidebar settles back to `update_time` DESC after the sync finishes. The reordering is only visible while sync is running.
 - After a full fetch, store the touched full-conversation `update_time` for future sync checks so the same conversation is not re-fetched every run.
 - Do not use the full-conversation top-level `update_time` as Markdown `updated`; after fetch it can represent fetch/read time.
 - Markdown `updated` is derived from the maximum `message.create_time` on the current visible conversation path.
 - Full conversation JSON is still written to raw cache; Markdown is overwritten from the current path.
+
+### Sidebar Re-ordering Modes
+Two opt-in modes touch every conversation in a chosen order to permanently re-sort the chatgpt.com sidebar:
+- `fix-order:created_at` — sorts ascending by `create_time`, so after the run the sidebar is ordered newest-created at the top.
+- `fix-order:last_message_at` — sorts ascending by the latest `message.create_time` on the current path, so the sidebar reflects last-actual-activity order.
+These are exposed under the per-account *Re-order sidebar by* menu and are intended as one-shot operations.
 
 ### Rate Limiting
 - ChatGPT's backend-api rate limits **aggressively** (HTTP 429).

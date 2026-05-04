@@ -61,7 +61,7 @@ const provider = {
     return { email, name, plan, orgId: org.uuid };
   },
 
-  async fetchConversations(ses, timestamps, onProgress, onConversation) {
+  async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
     const orgs = await makeRequest(`${BASE}/api/organizations`, ses);
     if (!orgs || orgs.length === 0) return [];
     const orgId = orgs[0].uuid;
@@ -78,6 +78,10 @@ const provider = {
     console.log(`[claude] ${toFetch.length}/${conversations.length} to fetch`);
 
     for (let i = 0; i < toFetch.length; i++) {
+      if (options.signal?.aborted) {
+        console.log(`[claude] sync aborted at ${i}/${toFetch.length}`);
+        break;
+      }
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
       await new Promise((r) => setTimeout(r, 500));

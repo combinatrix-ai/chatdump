@@ -103,6 +103,7 @@ const provider = {
     // it returns offset+items.length+1 while more pages exist, only becoming the real
     // count on the final page. Don't display it as a denominator.
     while (true) {
+      if (options.signal?.aborted) return [];
       await new Promise((r) => setTimeout(r, 1000));
       const page = await makeRequest(
         `${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`,
@@ -118,24 +119,39 @@ const provider = {
     }
 
     let toFetch;
-    if (mode === 'fix-order:created_at' || mode === 'fix-order:last_message_at') {
+    if (mode === 'full-sync:created_at' || mode === 'full-sync:last_message_at') {
       // Touch every conversation in ascending order so the LAST one accessed becomes
       // the most-recently-updated on chatgpt.com. After this run, list order on
       // chatgpt.com matches the chosen criterion (newest at top).
-      const sortKey = mode === 'fix-order:created_at' ? 'created_at' : 'last_message_at';
+      const sortKey = mode === 'full-sync:created_at' ? 'created_at' : 'last_message_at';
       toFetch = [...allConvs].sort(
         (a, b) => sortKeyMs(a, sortKey, timestamps) - sortKeyMs(b, sortKey, timestamps),
       );
       console.log(
-        `[openai] fix-order mode: touching all ${toFetch.length} conversations by ${sortKey} ascending`,
+        `[openai] full-sync mode: touching all ${toFetch.length} conversations by ${sortKey} ascending`,
       );
     } else {
-      toFetch = allConvs.filter((c) => {
+      // Sync mode: window-bounded diff fetch. On the very first run (no stored
+      // timestamps) we ignore the window and let the user kick off a full sync
+      // explicitly via the menu.
+      const isFirstRun = Object.keys(timestamps).length === 0;
+      const sinceDays = isFirstRun ? null : (options.sinceDays ?? 30);
+      const cutoffMs = sinceDays != null ? Date.now() - sinceDays * 86400000 : 0;
+      // Reverse the API-returned order (update_time DESC) so we read oldest-touched
+      // first. Each read bumps update_time on the server, so walking oldest→newest
+      // means the final touched conversation ends up topmost — chatgpt.com sidebar
+      // settles back to update_time DESC after sync finishes.
+      const filtered = allConvs.filter((c) => {
+        if (cutoffMs && (timestampToEpochMs(c.create_time) || 0) < cutoffMs) return false;
         const last = timestamps[c.id]?.update_time;
         const current = normalizeTimestamp(c.update_time);
         return !last || last !== current;
       });
-      console.log(`[openai] ${toFetch.length}/${allConvs.length} to fetch`);
+      toFetch = filtered.reverse();
+      const windowLabel = sinceDays != null ? `last ${sinceDays}d` : 'all time';
+      console.log(
+        `[openai] sync mode (${windowLabel}): ${toFetch.length}/${allConvs.length} to fetch`,
+      );
     }
     let fetchedCount = 0;
 
@@ -146,9 +162,26 @@ const provider = {
     const minDelay = 8000;
     const maxDelay = 30000;
     const jitter = (ms) => Math.round(ms * (0.8 + Math.random() * 0.4));
+    const sleep = (ms) =>
+      new Promise((resolve) => {
+        if (options.signal?.aborted) return resolve();
+        const t = setTimeout(resolve, ms);
+        options.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            resolve();
+          },
+          { once: true },
+        );
+      });
     let consecutiveFails = 0;
 
     for (let i = 0; i < toFetch.length; i++) {
+      if (options.signal?.aborted) {
+        console.log(`[openai] sync aborted at ${i}/${toFetch.length}`);
+        break;
+      }
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
 
@@ -163,7 +196,8 @@ const provider = {
         }
       }
 
-      await new Promise((r) => setTimeout(r, jitter(delay)));
+      await sleep(jitter(delay));
+      if (options.signal?.aborted) break;
 
       let success = false;
       try {
@@ -211,7 +245,8 @@ const provider = {
         console.log(
           `[openai] ${consecutiveFails} consecutive retryable failures, pausing 5 minutes...`,
         );
-        await new Promise((r) => setTimeout(r, 300000));
+        await sleep(300000);
+        if (options.signal?.aborted) break;
         consecutiveFails = 0;
         delay = 10000;
         // Refresh token after long pause

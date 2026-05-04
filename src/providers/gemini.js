@@ -60,7 +60,7 @@ const provider = {
     }
   },
 
-  async fetchConversations(ses, timestamps, onProgress, onConversation) {
+  async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
     // Step 1: Get tokens from the app page
     const tokens = await getPageTokens(ses);
     if (!tokens.at) {
@@ -100,6 +100,10 @@ const provider = {
 
     // Step 4: Fetch each conversation's messages
     for (let i = 0; i < toFetch.length; i++) {
+      if (options.signal?.aborted) {
+        console.log(`[gemini] sync aborted at ${i}/${toFetch.length}`);
+        break;
+      }
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
       await new Promise((r) => setTimeout(r, 500));

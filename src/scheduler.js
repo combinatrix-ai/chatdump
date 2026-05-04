@@ -11,6 +11,7 @@ let schedulerRunning = false;
 let onMenuRefresh = null;
 const syncingAccounts = new Set();
 const accountProgress = new Map(); // id -> short progress string
+const abortControllers = new Map(); // id -> AbortController for in-flight syncs
 
 function setMenuRefreshCallback(cb) {
   onMenuRefresh = cb;
@@ -26,6 +27,11 @@ function getAccountProgress(accountId) {
 
 function getSyncingCount() {
   return syncingAccounts.size;
+}
+
+function stopSync(accountId) {
+  const ac = abortControllers.get(accountId);
+  if (ac) ac.abort();
 }
 
 function setProgress(accountId, text) {
@@ -54,6 +60,18 @@ async function syncAccount(accountId, onStatus, options = {}) {
   if (!provider) return;
 
   syncingAccounts.add(accountId);
+  const abortController = new AbortController();
+  abortControllers.set(accountId, abortController);
+
+  // Default sinceDays from account.syncWindowDays for openai sync mode.
+  const effectiveOptions = { ...options, signal: abortController.signal };
+  if (
+    account.provider === 'openai' &&
+    (!effectiveOptions.mode || effectiveOptions.mode === 'sync') &&
+    effectiveOptions.sinceDays === undefined
+  ) {
+    effectiveOptions.sinceDays = account.syncWindowDays ?? 30;
+  }
 
   try {
     const vaultPath = getVaultPath(accountId);
@@ -66,9 +84,12 @@ async function syncAccount(accountId, onStatus, options = {}) {
       return;
     }
 
-    const startLabel = options.mode?.startsWith('fix-order:')
-      ? `Fix-order sync started (${options.mode.slice('fix-order:'.length)})`
-      : 'Sync started';
+    let startLabel = 'Sync started';
+    if (effectiveOptions.mode?.startsWith('full-sync:')) {
+      startLabel = `Full sync started (${effectiveOptions.mode.slice('full-sync:'.length)})`;
+    } else if (effectiveOptions.sinceDays != null) {
+      startLabel = `Sync started (last ${effectiveOptions.sinceDays}d)`;
+    }
     appendLog(accountId, { level: 'info', message: startLabel });
     updateAccount(accountId, { lastError: null });
     setProgress(accountId, 'Authenticating…');
@@ -171,15 +192,18 @@ async function syncAccount(accountId, onStatus, options = {}) {
           }
         },
         onConversation,
-        options,
+        effectiveOptions,
       );
 
       const now = new Date().toISOString();
-      const msg = failedWrites
-        ? `Partial sync: ${written} files (${failedWrites} failed, ${fetched} fetched)`
-        : written > 0
-          ? `Synced ${written} files (${fetched} fetched)`
-          : `Up to date (${totalConvs || 0} checked)`;
+      const stopped = abortController.signal.aborted;
+      const msg = stopped
+        ? `Stopped: ${written} files written, ${fetched} fetched`
+        : failedWrites
+          ? `Partial sync: ${written} files (${failedWrites} failed, ${fetched} fetched)`
+          : written > 0
+            ? `Synced ${written} files (${fetched} fetched)`
+            : `Up to date (${totalConvs || 0} checked)`;
 
       appendLog(accountId, {
         level: failedWrites ? 'error' : 'info',
@@ -211,6 +235,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
     }
   } finally {
     syncingAccounts.delete(accountId);
+    abortControllers.delete(accountId);
     setProgress(accountId, '');
   }
 
@@ -258,6 +283,7 @@ module.exports = {
   syncAll,
   startScheduler,
   stopScheduler,
+  stopSync,
   setMenuRefreshCallback,
   isSyncing,
   getAccountProgress,

@@ -6,8 +6,11 @@ const store = new Store({
     defaultVaultPath: '',
     syncIntervalMinutes: 30,
 
-    // Accounts: array of { id, provider, email, name, plan, vaultPath?, autoSync, lastSyncedAt, timestamps }
+    // Accounts: array of { id, provider, email, name, plan, vaultPath?, autoSync, lastSyncedAt, timestamps, syncWindowDays }
     // id is `${provider}:${email}` e.g. "claude:user@example.com"
+    // syncWindowDays: lookback for `Sync Now` (openai only); how many days of recent
+    //   conversations to include. Older chats are ignored to keep sync fast and
+    //   minimise sidebar reordering on chatgpt.com. null/undefined = no limit.
     accounts: [],
   },
 });
@@ -33,6 +36,7 @@ function upsertAccount(accountData) {
       lastSyncedAt: null,
       timestamps: {},
       vaultPath: '',
+      syncWindowDays: 30,
       ...accountData,
     });
   }

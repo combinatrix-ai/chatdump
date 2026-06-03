@@ -252,8 +252,6 @@ async function syncAll(onStatus, options = {}) {
 }
 
 function startScheduler(onStatus) {
-  const minutes = store.get('syncIntervalMinutes') || 30;
-  const delayMs = minutes * 60 * 1000;
   stopScheduler();
   schedulerRunning = true;
 
@@ -262,7 +260,9 @@ function startScheduler(onStatus) {
       await syncAll(onStatus);
     } finally {
       if (schedulerRunning) {
-        timeoutId = setTimeout(runAndScheduleNext, delayMs);
+        // Read fresh each cycle so changes from the menu take effect on the next run.
+        const minutes = store.get('syncIntervalMinutes') || 180;
+        timeoutId = setTimeout(runAndScheduleNext, minutes * 60 * 1000);
       }
     }
   }

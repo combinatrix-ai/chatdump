@@ -4,7 +4,7 @@ const store = new Store({
   defaults: {
     // Global default vault path
     defaultVaultPath: '',
-    syncIntervalMinutes: 30,
+    syncIntervalMinutes: 180,
 
     // Accounts: array of { id, provider, email, name, plan, vaultPath?, autoSync, lastSyncedAt, timestamps, syncWindowDays }
     // id is `${provider}:${email}` e.g. "claude:user@example.com"

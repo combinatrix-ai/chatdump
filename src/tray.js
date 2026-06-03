@@ -124,22 +124,23 @@ function buildMenu() {
     }
 
     const syncing = isSyncing(account.id);
-    if (syncing) {
-      sub.push({
-        label: 'Stop Syncing',
-        click: () => stopSync(account.id),
-      });
-    } else if (account.provider === 'openai') {
+    if (account.provider === 'openai') {
       const windowDays = account.syncWindowDays ?? 30;
-      sub.push({
-        label: `Sync Now (${windowDays} days)`,
-        click: () => syncAccount(account.id, onStatus),
-      });
+      if (syncing) {
+        sub.push({
+          label: 'Stop Syncing',
+          click: () => stopSync(account.id),
+        });
+      } else {
+        sub.push({
+          label: `Sync Now (${windowDays} days)`,
+          click: () => syncAccount(account.id, onStatus),
+        });
+      }
 
       const SYNC_WINDOWS = [1, 7, 30, 90];
       sub.push({
         label: 'Sync window',
-        enabled: !syncing,
         submenu: SYNC_WINDOWS.map((d) => ({
           label: d === 30 ? `Last ${d} days  (Default)` : `Last ${d} day${d === 1 ? '' : 's'}`,
           type: 'radio',
@@ -153,7 +154,6 @@ function buildMenu() {
 
       sub.push({
         label: 'Full sync',
-        enabled: !syncing,
         submenu: [
           {
             label: 'ⓘ Reads every chat in your chosen order. Your chatgpt.com sidebar',
@@ -163,13 +163,20 @@ function buildMenu() {
           { type: 'separator' },
           {
             label: 'by Creation date',
+            enabled: !syncing,
             click: () => syncAccount(account.id, onStatus, { mode: 'full-sync:created_at' }),
           },
           {
             label: 'by Last message time',
+            enabled: !syncing,
             click: () => syncAccount(account.id, onStatus, { mode: 'full-sync:last_message_at' }),
           },
         ],
+      });
+    } else if (syncing) {
+      sub.push({
+        label: 'Stop Syncing',
+        click: () => stopSync(account.id),
       });
     } else {
       sub.push({
@@ -437,6 +444,28 @@ function buildMenu() {
     label: 'Sync All Now',
     enabled: accountItems.length > 0,
     click: () => syncAll(onStatus, { includeDisabled: true }),
+  });
+
+  const intervalMinutes = store.get('syncIntervalMinutes') || 180;
+  const INTERVAL_OPTIONS = [
+    { label: 'Every 30 minutes', minutes: 30 },
+    { label: 'Every 1 hour', minutes: 60 },
+    { label: 'Every 3 hours  (Default)', minutes: 180 },
+    { label: 'Every 6 hours', minutes: 360 },
+    { label: 'Every 12 hours', minutes: 720 },
+    { label: 'Every 24 hours', minutes: 1440 },
+  ];
+  template.push({
+    label: 'Auto-sync interval',
+    submenu: INTERVAL_OPTIONS.map((opt) => ({
+      label: opt.label,
+      type: 'radio',
+      checked: intervalMinutes === opt.minutes,
+      click: () => {
+        store.set('syncIntervalMinutes', opt.minutes);
+        buildMenu();
+      },
+    })),
   });
 
   template.push({ type: 'separator' });

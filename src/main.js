@@ -20,6 +20,7 @@ const { getProvider } = require('./providers');
 
 function ensureDefaultVaultPath() {
   if (store.get('defaultVaultPath')) return;
+  if (process.mas) return;
   const fallback = path.join(os.homedir(), 'chativist');
   try {
     fs.mkdirSync(fallback, { recursive: true });

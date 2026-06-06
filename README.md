@@ -25,6 +25,9 @@ notarizes via Apple, staples, and attaches the DMG + zip to a GitHub Release.
 For local builds, the one-time CI setup, or troubleshooting see
 [docs/release.md](docs/release.md).
 
+For Mac App Store packaging and submission, see
+[docs/mas-release.md](docs/mas-release.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

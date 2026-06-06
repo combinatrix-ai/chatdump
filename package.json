@@ -19,6 +19,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
+    "dist:mas": "SKIP_NOTARIZE=1 electron-builder --mac mas",
+    "dist:mas-dev": "SKIP_NOTARIZE=1 electron-builder --mac mas-dev",
     "lint": "biome check src",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
@@ -62,7 +64,30 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false
+      "notarize": false,
+      "extendInfo": {
+        "ElectronTeamID": "3Y275A5TZ8"
+      }
+    },
+    "mas": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "preAutoEntitlements": false,
+      "extendInfo": {
+        "ElectronTeamID": "3Y275A5TZ8"
+      }
+    },
+    "masDev": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "preAutoEntitlements": false,
+      "extendInfo": {
+        "ElectronTeamID": "3Y275A5TZ8"
+      }
     },
     "afterSign": "build/notarize.js",
     "dmg": {

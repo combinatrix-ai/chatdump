@@ -1,4 +1,12 @@
-const { store, getAccounts, getAccount, updateAccount, getVaultPath } = require('./store');
+const { app } = require('electron');
+const {
+  store,
+  getAccounts,
+  getAccount,
+  updateAccount,
+  getVaultPath,
+  getVaultBookmark,
+} = require('./store');
 const { ensureAuthenticated, getSession } = require('./auth');
 const { getProvider } = require('./providers');
 const { writeConversation } = require('./writer');
@@ -45,6 +53,27 @@ function getConversationId(conv, provider) {
     if (id) return id;
   }
   return conv?.uuid || conv?.conversation_id || conv?.id || 'unknown';
+}
+
+function startVaultAccess(accountId) {
+  const bookmark = getVaultBookmark(accountId);
+  if (!bookmark || typeof app.startAccessingSecurityScopedResource !== 'function') return null;
+
+  try {
+    const stopAccessing = app.startAccessingSecurityScopedResource(bookmark);
+    return typeof stopAccessing === 'function' ? stopAccessing : null;
+  } catch (e) {
+    throw new Error(`Vault permission expired; choose the vault folder again (${e.message})`);
+  }
+}
+
+function withVaultAccess(accountId, action) {
+  const stopAccessing = startVaultAccess(accountId);
+  try {
+    return action();
+  } finally {
+    stopAccessing?.();
+  }
 }
 
 async function syncAccount(accountId, onStatus, options = {}) {
@@ -108,7 +137,9 @@ async function syncAccount(accountId, onStatus, options = {}) {
     }
 
     try {
-      const reparsed = reparseOutdated(vaultPath, provider, account.email || account.id);
+      const reparsed = withVaultAccess(accountId, () =>
+        reparseOutdated(vaultPath, provider, account.email || account.id),
+      );
       if (reparsed > 0) {
         appendLog(accountId, {
           level: 'info',
@@ -144,19 +175,21 @@ async function syncAccount(accountId, onStatus, options = {}) {
       const onConversation = (conv) => {
         fetched++;
         try {
-          const id = getConversationId(conv, provider);
-          if (id && id !== 'unknown') {
-            const rawPayload = provider.getRawCache ? provider.getRawCache(conv) : conv;
-            try {
-              writeRawCache(vaultPath, provider.subdir, accountKey, id, rawPayload);
-            } catch (e) {
-              console.error(`[${account.provider}] Cache write failed for ${id}: ${e.message}`);
+          withVaultAccess(accountId, () => {
+            const id = getConversationId(conv, provider);
+            if (id && id !== 'unknown') {
+              const rawPayload = provider.getRawCache ? provider.getRawCache(conv) : conv;
+              try {
+                writeRawCache(vaultPath, provider.subdir, accountKey, id, rawPayload);
+              } catch (e) {
+                console.error(`[${account.provider}] Cache write failed for ${id}: ${e.message}`);
+              }
             }
-          }
-          const md = provider.convertToMarkdown(conv);
-          const filename = provider.makeFilename(conv);
-          const changed = writeConversation(vaultPath, provider.subdir, accountKey, filename, md);
-          if (changed) written++;
+            const md = provider.convertToMarkdown(conv);
+            const filename = provider.makeFilename(conv);
+            const changed = writeConversation(vaultPath, provider.subdir, accountKey, filename, md);
+            if (changed) written++;
+          });
         } catch (e) {
           failedWrites++;
           const convId = getConversationId(conv, provider);

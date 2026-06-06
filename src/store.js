@@ -4,9 +4,10 @@ const store = new Store({
   defaults: {
     // Global default vault path
     defaultVaultPath: '',
+    defaultVaultBookmark: '',
     syncIntervalMinutes: 180,
 
-    // Accounts: array of { id, provider, email, name, plan, vaultPath?, autoSync, lastSyncedAt, timestamps, syncWindowDays }
+    // Accounts: array of { id, provider, email, name, plan, vaultPath?, vaultBookmark?, autoSync, lastSyncedAt, timestamps, syncWindowDays }
     // id is `${provider}:${email}` e.g. "claude:user@example.com"
     // syncWindowDays: lookback for `Sync Now` (openai only); how many days of recent
     //   conversations to include. Older chats are ignored to keep sync fast and
@@ -62,6 +63,11 @@ function getVaultPath(accountId) {
   return account?.vaultPath || store.get('defaultVaultPath') || '';
 }
 
+function getVaultBookmark(accountId) {
+  const account = getAccount(accountId);
+  return account?.vaultBookmark || store.get('defaultVaultBookmark') || '';
+}
+
 module.exports = {
   store,
   getAccounts,
@@ -70,4 +76,5 @@ module.exports = {
   removeAccount,
   updateAccount,
   getVaultPath,
+  getVaultBookmark,
 };

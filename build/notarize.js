@@ -3,6 +3,10 @@ const { notarize } = require('@electron/notarize');
 exports.default = async function notarizing(context) {
   const { electronPlatformName, appOutDir } = context;
   if (electronPlatformName !== 'darwin') return;
+  if (process.env.SKIP_NOTARIZE === '1') {
+    console.log('[notarize] Skipping: SKIP_NOTARIZE=1.');
+    return;
+  }
 
   const appleId = process.env.APPLE_ID;
   const appleIdPassword = process.env.APPLE_APP_SPECIFIC_PASSWORD;

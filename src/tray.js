@@ -201,10 +201,11 @@ function buildMenu() {
           const result = await dialog.showOpenDialog(focusWin, {
             properties: ['openDirectory'],
             title: `Select vault for ${displayName}: ${label}`,
+            securityScopedBookmarks: true,
           });
           focusWin.destroy();
           if (!result.canceled && result.filePaths.length > 0) {
-            updateAccount(account.id, { vaultPath: result.filePaths[0] });
+            updateAccount(account.id, buildVaultSelection(result));
             buildMenu();
           }
         } finally {
@@ -216,7 +217,7 @@ function buildMenu() {
       label: 'Use Default Vault',
       enabled: !!account.vaultPath,
       click: () => {
-        updateAccount(account.id, { vaultPath: '' });
+        updateAccount(account.id, { vaultPath: '', vaultBookmark: '' });
         buildMenu();
       },
     });
@@ -484,10 +485,13 @@ function buildMenu() {
         const result = await dialog.showOpenDialog(focusWin, {
           properties: ['openDirectory'],
           title: 'Select Default Vault',
+          securityScopedBookmarks: true,
         });
         focusWin.destroy();
         if (!result.canceled && result.filePaths.length > 0) {
           store.set('defaultVaultPath', result.filePaths[0]);
+          const bookmark = getVaultBookmarkFromSelection(result);
+          if (bookmark) store.set('defaultVaultBookmark', bookmark);
           buildMenu();
         }
       } finally {
@@ -531,6 +535,17 @@ function onStatus(_state, _message, _accountId) {
 function shortenPath(p) {
   const home = require('node:os').homedir();
   return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+}
+
+function getVaultBookmarkFromSelection(result) {
+  return result.bookmarks?.[0] || '';
+}
+
+function buildVaultSelection(result) {
+  const update = { vaultPath: result.filePaths[0] };
+  const bookmark = getVaultBookmarkFromSelection(result);
+  if (bookmark) update.vaultBookmark = bookmark;
+  return update;
 }
 
 async function copyProviderCookies(cookies, targetSession, targetLabel) {

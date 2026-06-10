@@ -3,6 +3,11 @@ const { withRetry } = require('./retry');
 
 const BASE = 'https://gemini.google.com';
 const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
+const LIST_PAGE_SIZE = 13;
+const MAX_LIST_PAGES = 100;
+const LIST_PAGE_DELAY_MS = 300;
+// Client-requested cap on the reverse-engineered hNvQHb RPC.
+const MAX_MESSAGES_PER_CONVERSATION = 200;
 
 const provider = {
   name: 'gemini',
@@ -63,22 +68,20 @@ const provider = {
 
   async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
     // Step 1: Get tokens from the app page
-    const tokens = await getPageTokens(ses);
+    const tokens = await getPageTokens(ses, options.signal);
     if (!tokens.at) {
       throw new Error('AUTH_EXPIRED');
     }
 
     // Step 2: Fetch conversation list via MaZiqc RPC
-    const listPayload = JSON.stringify([13, null, [0, null, 1]]);
-    const listResp = await batchExecute(ses, tokens, 'MaZiqc', listPayload);
-    const conversations = parseConversationList(listResp);
+    const conversations = await fetchConversationListPages(ses, tokens, options.signal);
 
     console.log(`[gemini] Found ${conversations.length} conversations`);
 
     // Also fetch pinned conversations
     try {
       const pinnedPayload = JSON.stringify([13, null, [1, null, 1]]);
-      const pinnedResp = await batchExecute(ses, tokens, 'MaZiqc', pinnedPayload);
+      const pinnedResp = await batchExecute(ses, tokens, 'MaZiqc', pinnedPayload, options.signal);
       const pinned = parseConversationList(pinnedResp);
       // Merge, avoiding duplicates
       const existingIds = new Set(conversations.map((c) => c.id));
@@ -107,10 +110,19 @@ const provider = {
       }
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
-      await new Promise((r) => setTimeout(r, 500));
+      await sleep(500);
       try {
-        const msgPayload = JSON.stringify([conv.id, 50, null, 1, [1], [4], null, 1]);
-        const msgResp = await batchExecute(ses, tokens, 'hNvQHb', msgPayload);
+        const msgPayload = JSON.stringify([
+          conv.id,
+          MAX_MESSAGES_PER_CONVERSATION,
+          null,
+          1,
+          [1],
+          [4],
+          null,
+          1,
+        ]);
+        const msgResp = await batchExecute(ses, tokens, 'hNvQHb', msgPayload, options.signal);
         const messages = parseConversationMessages(msgResp);
         const full = {
           id: conv.id,
@@ -136,7 +148,7 @@ const provider = {
 
     const frontmatter = [
       '---',
-      `title: "${title.replace(/"/g, '\\"')}"`,
+      `title: ${JSON.stringify(title)}`,
       `created: ${created}`,
       'source: gemini',
       `id: "${id}"`,
@@ -170,20 +182,21 @@ const provider = {
 
 // --- Helpers ---
 
-async function getPageTokens(ses) {
+async function getPageTokens(ses, signal) {
   try {
-    const html = await makeRawRequest(`${BASE}/app`, ses);
+    const html = await makeRawRequest(`${BASE}/app`, ses, { signal });
     const at = (html.match(/"SNlM0e":"([^"]+)"/) || [])[1] || '';
     const bl = (html.match(/"cfb2h":"([^"]+)"/) || [])[1] || '';
     const sid = (html.match(/"FdrFJe":"([^"]+)"/) || [])[1] || '';
     return { at, bl, sid };
   } catch (e) {
+    if (signal?.aborted || e.message === 'Request aborted') throw e;
     console.error('[gemini] Failed to get page tokens:', e.message);
     return { at: '', bl: '', sid: '' };
   }
 }
 
-async function batchExecute(ses, tokens, rpcId, payload) {
+async function batchExecute(ses, tokens, rpcId, payload, signal) {
   // Build form body
   const formBody = new URLSearchParams();
   formBody.set('f.req', JSON.stringify([[[rpcId, payload, null, 'generic']]]));
@@ -215,6 +228,7 @@ async function batchExecute(ses, tokens, rpcId, payload) {
           'X-Same-Domain': '1',
         },
         [BASE, 'https://google.com'],
+        { signal },
       ),
     {
       maxAttempts: 3,
@@ -228,23 +242,72 @@ async function batchExecute(ses, tokens, rpcId, payload) {
   );
 }
 
-function parseConversationList(raw) {
-  // Response starts with )]}' followed by newlines — strip XSSI prefix
-  const xssiIdx = raw.indexOf('\n');
-  const cleaned = xssiIdx >= 0 ? raw.slice(xssiIdx) : raw;
+async function fetchConversationListPages(ses, tokens, signal) {
   const conversations = [];
+  let pageToken = null;
+
+  for (let page = 1; page <= MAX_LIST_PAGES; page++) {
+    if (signal?.aborted) break;
+
+    const listPayload = JSON.stringify([LIST_PAGE_SIZE, pageToken, [0, null, 1]]);
+    let parsed;
+
+    try {
+      const listResp = await batchExecute(ses, tokens, 'MaZiqc', listPayload, signal);
+      parsed = parseConversationListResult(listResp);
+      if (typeof listResp === 'string' && listResp.trim() && !parsed.frameSeen) {
+        throw new Error('Gemini list response format changed — no MaZiqc frame found');
+      }
+    } catch (e) {
+      if (page === 1) throw e;
+      console.error(`[gemini] Failed to fetch list page ${page}: ${e.message}`);
+      break;
+    }
+
+    conversations.push(...parsed.conversations);
+
+    if (!parsed.nextToken || parsed.conversations.length === 0) break;
+    if (page === MAX_LIST_PAGES) {
+      console.error(`[gemini] Stopped conversation pagination after ${MAX_LIST_PAGES} pages`);
+      break;
+    }
+
+    pageToken = parsed.nextToken;
+    if (signal?.aborted) break;
+    await sleep(LIST_PAGE_DELAY_MS);
+  }
+
+  return conversations;
+}
+
+function parseConversationList(raw) {
+  return parseConversationListResult(raw).conversations;
+}
+
+function parseConversationListResult(raw) {
+  const responseText = typeof raw === 'string' ? raw : '';
+  // Response starts with )]}' followed by newlines — strip XSSI prefix
+  const xssiIdx = responseText.indexOf('\n');
+  const cleaned = xssiIdx >= 0 ? responseText.slice(xssiIdx) : responseText;
+  const conversations = [];
+  let frameSeen = false;
+  let nextToken = null;
 
   try {
     const frames = parseFrames(cleaned);
     for (const frame of frames) {
       if (!Array.isArray(frame)) continue;
       if (frame[0] !== 'wrb.fr' || frame[1] !== 'MaZiqc') continue;
+      frameSeen = true;
 
       const dataStr = frame[2];
       if (typeof dataStr !== 'string') continue;
 
       const data = JSON.parse(dataStr);
       // data = [null, "encryptedToken", [[conv1], [conv2], ...]]
+      if (typeof data[1] === 'string' && data[1]) {
+        nextToken = data[1];
+      }
       // Find the first nested array that contains conversation arrays
       let items = [];
       for (const entry of data) {
@@ -267,7 +330,11 @@ function parseConversationList(raw) {
     console.error('[gemini] Failed to parse conversation list:', e.message);
   }
 
-  return conversations;
+  return { conversations, frameSeen, nextToken };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseConversationMessages(raw) {
@@ -398,5 +465,11 @@ function sanitize(name) {
     .replace(/\s+/g, '_')
     .slice(0, 80);
 }
+
+provider._test = {
+  parseFrames,
+  parseConversationListResult,
+  parseConversationMessages,
+};
 
 module.exports = provider;

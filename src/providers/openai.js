@@ -80,18 +80,21 @@ const provider = {
   },
 
   // Get access token needed for /backend-api/* calls
-  async getAccessToken(ses) {
+  async getAccessToken(ses, options = {}) {
     try {
-      const authSession = await makeRequest(`${BASE}/api/auth/session`, ses);
+      const authSession = await makeRequest(`${BASE}/api/auth/session`, ses, undefined, {
+        signal: options.signal,
+      });
       return authSession?.accessToken || null;
-    } catch {
+    } catch (e) {
+      if (options.signal?.aborted || e.message === 'Request aborted') throw e;
       return null;
     }
   },
 
   async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
     const mode = options.mode || 'sync';
-    let token = await provider.getAccessToken(ses);
+    let token = await provider.getAccessToken(ses, { signal: options.signal });
     if (!token) {
       throw new Error('AUTH_EXPIRED');
     }
@@ -99,6 +102,12 @@ const provider = {
     let allConvs = [];
     let offset = 0;
     const limit = 100;
+    const isFirstRun = Object.keys(timestamps).length === 0;
+    const sinceDays = isFirstRun ? null : (options.sinceDays ?? 30);
+    const cutoffMs = sinceDays != null ? Date.now() - sinceDays * 86400000 : 0;
+    const listingCutoffMs = mode === 'sync' && options.sinceDays != null ? cutoffMs : 0;
+    const listingCutoffIso = listingCutoffMs ? new Date(listingCutoffMs).toISOString() : '';
+    let listedPages = 0;
 
     // Note: ChatGPT's /backend-api/conversations `total` is not the real total —
     // it returns offset+items.length+1 while more pages exist, only becoming the real
@@ -106,15 +115,48 @@ const provider = {
     while (true) {
       if (options.signal?.aborted) return [];
       await new Promise((r) => setTimeout(r, 1000));
-      const page = await makeRequest(
-        `${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`,
-        ses,
-        { Authorization: `Bearer ${token}` },
+      const page = await withRetry(
+        () =>
+          makeRequest(
+            `${BASE}/backend-api/conversations?offset=${offset}&limit=${limit}`,
+            ses,
+            {
+              Authorization: `Bearer ${token}`,
+            },
+            {
+              signal: options.signal,
+            },
+          ),
+        {
+          maxAttempts: 5,
+          getDelayMs: (attempt) => Math.min(120000, 5000 * 2 ** (attempt - 1)),
+          onRetry: (e, attempt, maxAttempts, backoff) => {
+            console.log(
+              `[openai] HTTP ${e.statusCode} listing offset=${offset}, backoff ${backoff / 1000}s (attempt ${attempt}/${maxAttempts})`,
+            );
+          },
+        },
       );
       const items = page?.items || [];
+      listedPages++;
       allConvs = allConvs.concat(items);
       onProgress?.(-1, null, `Listing ${allConvs.length}…`);
       console.log(`[openai] Listed ${allConvs.length} conversations`);
+
+      if (
+        listingCutoffMs &&
+        items.length > 0 &&
+        items.every((item) => {
+          const updateMs = timestampToEpochMs(item.update_time);
+          return typeof updateMs === 'number' && updateMs < listingCutoffMs;
+        })
+      ) {
+        console.log(
+          `[openai] sync listing stopped early after ${listedPages} pages (${allConvs.length} conversations); all page update_time values are older than ${listingCutoffIso}, skipping remaining pages from offset ${offset + limit}`,
+        );
+        break;
+      }
+
       if (items.length < limit) break;
       offset += limit;
     }
@@ -135,9 +177,6 @@ const provider = {
       // Sync mode: window-bounded diff fetch. On the very first run (no stored
       // timestamps) we ignore the window and let the user kick off a full sync
       // explicitly via the menu.
-      const isFirstRun = Object.keys(timestamps).length === 0;
-      const sinceDays = isFirstRun ? null : (options.sinceDays ?? 30);
-      const cutoffMs = sinceDays != null ? Date.now() - sinceDays * 86400000 : 0;
       // Reverse the API-returned order (update_time DESC) so we read oldest-touched
       // first. Each read bumps update_time on the server, so walking oldest→newest
       // means the final touched conversation ends up topmost — chatgpt.com sidebar
@@ -189,7 +228,7 @@ const provider = {
       // If token might be expired (>5min), refresh it
       if (i > 0 && i % 100 === 0) {
         try {
-          const newToken = await provider.getAccessToken(ses);
+          const newToken = await provider.getAccessToken(ses, { signal: options.signal });
           if (newToken) token = newToken;
           console.log(`[openai] Refreshed access token at item ${i}`);
         } catch {
@@ -204,9 +243,16 @@ const provider = {
       try {
         const full = await withRetry(
           () =>
-            makeRequest(`${BASE}/backend-api/conversation/${conv.id}`, ses, {
-              Authorization: `Bearer ${token}`,
-            }),
+            makeRequest(
+              `${BASE}/backend-api/conversation/${conv.id}`,
+              ses,
+              {
+                Authorization: `Bearer ${token}`,
+              },
+              {
+                signal: options.signal,
+              },
+            ),
           {
             maxAttempts: 5,
             getDelayMs: (attempt) => Math.min(120000, 5000 * 2 ** (attempt - 1)),
@@ -252,7 +298,7 @@ const provider = {
         delay = 10000;
         // Refresh token after long pause
         try {
-          const newToken = await provider.getAccessToken(ses);
+          const newToken = await provider.getAccessToken(ses, { signal: options.signal });
           if (newToken) token = newToken;
         } catch {
           /* keep old */
@@ -275,7 +321,7 @@ const provider = {
 
     const frontmatter = [
       '---',
-      `title: "${title.replace(/"/g, '\\"')}"`,
+      `title: ${JSON.stringify(title)}`,
       `created: ${created}`,
       `updated: ${updated}`,
       model ? `model: ${model}` : null,
@@ -402,5 +448,14 @@ function sanitize(name) {
     .replace(/\s+/g, '_')
     .slice(0, 80);
 }
+
+provider._test = {
+  getCurrentPathMessages,
+  getLatestMessageCreateTime,
+  timestampToEpochMs,
+  timestampToIso,
+  flattenMessages,
+  sanitize,
+};
 
 module.exports = provider;

@@ -2,7 +2,7 @@
 
 ## Overview
 
-webui-sync fetches conversations from three AI chat providers. Each has a different internal API, authentication mechanism, and data structure. This document describes how each provider works, including deduplication and change detection logic.
+Chativist fetches conversations from three AI chat providers. Each has a different internal API, authentication mechanism, and data structure. This document describes how each provider works, including deduplication and change detection logic.
 
 ---
 
@@ -91,13 +91,13 @@ webui-sync fetches conversations from three AI chat providers. Each has a differ
 
 ### Sidebar Re-ordering Modes
 Two opt-in modes touch every conversation in a chosen order to permanently re-sort the chatgpt.com sidebar:
-- `fix-order:created_at` — sorts ascending by `create_time`, so after the run the sidebar is ordered newest-created at the top.
-- `fix-order:last_message_at` — sorts ascending by the latest `message.create_time` on the current path, so the sidebar reflects last-actual-activity order.
-These are exposed under the per-account *Re-order sidebar by* menu and are intended as one-shot operations.
+- `full-sync:created_at` — sorts ascending by `create_time`, so after the run the sidebar is ordered newest-created at the top.
+- `full-sync:last_message_at` — sorts ascending by the latest `message.create_time` on the current path, so the sidebar reflects last-actual-activity order.
+These are exposed under the per-account *Full sync* menu and are intended as one-shot operations.
 
 ### Rate Limiting
 - ChatGPT's backend-api rate limits **aggressively** (HTTP 429).
-- Base delay: 5 seconds between requests.
+- Base delay: 10 seconds between requests, with adaptive bounds from 8 to 30 seconds.
 - Exponential backoff on 429: 5s → 10s → 20s → 40s → 80s → 120s (up to 5 retries per conversation).
 - Adaptive delay: increases on 429, gradually decreases on success.
 - After 10 consecutive 429s: 5-minute cooldown pause.
@@ -214,7 +214,7 @@ Body: f.req=[[["rpcId", "payload_json_string", null, "generic"]]]&at={SNlM0e_tok
 - **Plan**: Checks for `"PRO"` or `"gemini_advanced"` in page HTML.
 
 ### Conversation List Response (MaZiqc)
-Payload: `[13, null, [0, null, 1]]` (13 = count, 0 = not pinned)
+Payload: `[13, pageToken, [0, null, 1]]` (13 conversations per page, 0 = not pinned)
 ```json
 [
   null,
@@ -225,12 +225,14 @@ Payload: `[13, null, [0, null, 1]]` (13 = count, 0 = not pinned)
   ]
 ]
 ```
-- `[0]` = conversation ID
-- `[1]` = title
-- `[5]` = `[seconds, nanos]` timestamp
+- Top-level `data[1]` = continuation token for the next page, reused as `pageToken`
+- Conversation item `[0]` = conversation ID
+- Conversation item `[1]` = title
+- Conversation item `[5]` = `[seconds, nanos]` timestamp
 
 ### Conversation Messages Response (hNvQHb)
 Payload: `[conversationId, limit, null, 1, [1], [4], null, 1]`
+The client requests `limit = 200` messages per conversation.
 ```
 [
   [

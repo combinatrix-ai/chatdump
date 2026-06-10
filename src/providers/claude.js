@@ -63,13 +63,17 @@ const provider = {
   },
 
   async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
-    const orgs = await makeRequest(`${BASE}/api/organizations`, ses);
+    const orgs = await makeRequest(`${BASE}/api/organizations`, ses, undefined, {
+      signal: options.signal,
+    });
     if (!orgs || orgs.length === 0) return [];
     const orgId = orgs[0].uuid;
 
     const conversations = await makeRequest(
       `${BASE}/api/organizations/${orgId}/chat_conversations`,
       ses,
+      undefined,
+      { signal: options.signal },
     );
     const toFetch = conversations.filter((c) => {
       const last = timestamps[c.uuid];
@@ -90,6 +94,8 @@ const provider = {
         const full = await makeRequest(
           `${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`,
           ses,
+          undefined,
+          { signal: options.signal },
         );
         onConversation?.(full);
         timestamps[conv.uuid] = conv.updated_at;
@@ -109,7 +115,7 @@ const provider = {
 
     const frontmatter = [
       '---',
-      `title: "${title.replace(/"/g, '\\"')}"`,
+      `title: ${JSON.stringify(title)}`,
       `created: ${created}`,
       `updated: ${updated}`,
       model ? `model: ${model}` : null,
@@ -166,5 +172,7 @@ function sanitize(name) {
     .replace(/\s+/g, '_')
     .slice(0, 80);
 }
+
+provider._test = { extractText };
 
 module.exports = provider;

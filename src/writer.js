@@ -8,6 +8,22 @@ function writeConversation(vaultPath, providerSubdir, accountKey, filename, mark
   fs.mkdirSync(dir, { recursive: true });
 
   const filePath = path.join(dir, filename);
+  const idSuffixMatch = filename.match(/_([0-9a-f]{8})\.md$/);
+
+  if (idSuffixMatch) {
+    try {
+      const suffix = idSuffixMatch[0];
+      for (const entry of fs.readdirSync(dir)) {
+        if (entry !== filename && entry.endsWith(suffix)) {
+          const stalePath = path.join(dir, entry);
+          fs.unlinkSync(stalePath);
+          console.log(`Deleted stale conversation file: ${stalePath}`);
+        }
+      }
+    } catch {
+      /* ignore stale duplicate cleanup failure */
+    }
+  }
 
   if (fs.existsSync(filePath)) {
     const existing = fs.readFileSync(filePath, 'utf-8');

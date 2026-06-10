@@ -1,4 +1,5 @@
 const { net } = require('electron');
+const { StringDecoder } = require('node:string_decoder');
 const { logHttp } = require('../debug-log');
 
 const BODY_LOG_LIMIT = 4096;
@@ -12,8 +13,51 @@ function truncate(s) {
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
+  if (statusCode !== undefined) error.statusCode = statusCode;
+  return error;
+}
+
+function createAuthExpiredError(statusCode) {
+  const error = new Error('AUTH_EXPIRED');
   error.statusCode = statusCode;
   return error;
+}
+
+function getHeader(responseHeaders, name) {
+  const lowerName = name.toLowerCase();
+  const key = Object.keys(responseHeaders || {}).find((k) => k.toLowerCase() === lowerName);
+  const value = key ? responseHeaders[key] : '';
+  return Array.isArray(value) ? value.join(', ') : String(value || '');
+}
+
+function classifyAuthStatus(status, responseHeaders, body) {
+  if (status === 401) return createAuthExpiredError(401);
+
+  if (status !== 403) return null;
+
+  const contentType = getHeader(responseHeaders, 'content-type');
+  const isHtml = contentType.toLowerCase().includes('text/html');
+  const isMitigation = /cloudflare|cf-mitigated|just a moment|challenge-platform/i.test(body);
+  if (isHtml || isMitigation) {
+    return createHttpError(`HTTP 403 body=${truncate(body)}`, 403);
+  }
+
+  return createAuthExpiredError(403);
+}
+
+function createUtf8Accumulator() {
+  const decoder = new StringDecoder('utf8');
+  let body = '';
+
+  return {
+    write(chunk) {
+      body += decoder.write(chunk);
+    },
+    end() {
+      body += decoder.end();
+      return body;
+    },
+  };
 }
 
 async function buildCookieHeader(ses, urls) {
@@ -33,8 +77,69 @@ async function buildCookieHeader(ses, urls) {
   return parts.join('; ');
 }
 
-async function makeRequest(url, ses, extraHeaders) {
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw new Error('Request aborted');
+}
+
+function logRequestError(kind, method, url, startedAt, requestHeaders, error) {
+  logHttp({
+    kind,
+    method,
+    url,
+    durationMs: Date.now() - startedAt,
+    requestHeaders,
+    error: error.message,
+    ok: false,
+  });
+}
+
+function setupRequestCancellation(req, signal, timeoutMs, onCancel) {
+  let settled = false;
+  let timeoutId = null;
+  let abortHandler = null;
+
+  const cleanup = () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);
+  };
+
+  const cancel = (error) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    req.abort();
+    onCancel(error);
+  };
+
+  if (timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      cancel(createHttpError(`Request timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+  }
+
+  if (signal) {
+    abortHandler = () => {
+      cancel(new Error('Request aborted'));
+    };
+    signal.addEventListener('abort', abortHandler, { once: true });
+    if (signal.aborted) abortHandler();
+  }
+
+  return {
+    finish() {
+      if (settled) return false;
+      settled = true;
+      cleanup();
+      return true;
+    },
+  };
+}
+
+async function makeRequest(url, ses, extraHeaders, options = {}) {
+  const { signal, timeoutMs = 60000 } = options;
+  throwIfAborted(signal);
   const cookieHeader = await buildCookieHeader(ses, [url]);
+  throwIfAborted(signal);
 
   const requestHeaders = {
     Accept: 'application/json',
@@ -53,15 +158,22 @@ async function makeRequest(url, ses, extraHeaders) {
       req.setHeader(k, v);
     }
 
-    let body = '';
+    const lifecycle = setupRequestCancellation(req, signal, timeoutMs, (error) => {
+      logRequestError('json', 'GET', url, startedAt, requestHeaders, error);
+      reject(error);
+    });
+
+    const responseBody = createUtf8Accumulator();
     req.on('response', (response) => {
       const status = response.statusCode;
       const responseHeaders = response.headers;
 
       response.on('data', (chunk) => {
-        body += chunk.toString();
+        responseBody.write(chunk);
       });
       response.on('end', () => {
+        if (!lifecycle.finish()) return;
+        const body = responseBody.end();
         const durationMs = Date.now() - startedAt;
         const ok = status < 400;
 
@@ -95,8 +207,9 @@ async function makeRequest(url, ses, extraHeaders) {
           ok,
         });
 
-        if (status === 401 || status === 403) {
-          reject(new Error('AUTH_EXPIRED'));
+        const authError = classifyAuthStatus(status, responseHeaders, body);
+        if (authError) {
+          reject(authError);
           return;
         }
         if (status >= 400) {
@@ -111,23 +224,19 @@ async function makeRequest(url, ses, extraHeaders) {
       });
     });
     req.on('error', (err) => {
-      logHttp({
-        kind: 'json',
-        method: 'GET',
-        url,
-        durationMs: Date.now() - startedAt,
-        requestHeaders,
-        error: err.message,
-        ok: false,
-      });
+      if (!lifecycle.finish()) return;
+      logRequestError('json', 'GET', url, startedAt, requestHeaders, err);
       reject(err);
     });
     req.end();
   });
 }
 
-async function makeRawRequest(url, ses) {
+async function makeRawRequest(url, ses, options = {}) {
+  const { signal, timeoutMs = 60000 } = options;
+  throwIfAborted(signal);
   const cookieHeader = await buildCookieHeader(ses, [url]);
+  throwIfAborted(signal);
 
   const requestHeaders = cookieHeader ? { Cookie: cookieHeader } : {};
   const startedAt = Date.now();
@@ -141,15 +250,22 @@ async function makeRawRequest(url, ses) {
       req.setHeader(k, v);
     }
 
-    let body = '';
+    const lifecycle = setupRequestCancellation(req, signal, timeoutMs, (error) => {
+      logRequestError('raw', 'GET', url, startedAt, requestHeaders, error);
+      reject(error);
+    });
+
+    const responseBody = createUtf8Accumulator();
     req.on('response', (response) => {
       const status = response.statusCode;
       const responseHeaders = response.headers;
 
       response.on('data', (chunk) => {
-        body += chunk.toString();
+        responseBody.write(chunk);
       });
       response.on('end', () => {
+        if (!lifecycle.finish()) return;
+        const body = responseBody.end();
         const durationMs = Date.now() - startedAt;
         const ok = status < 400;
 
@@ -165,8 +281,9 @@ async function makeRawRequest(url, ses) {
           ok,
         });
 
-        if (status === 401 || status === 403) {
-          reject(new Error('AUTH_EXPIRED'));
+        const authError = classifyAuthStatus(status, responseHeaders, body);
+        if (authError) {
+          reject(authError);
           return;
         }
         if (status >= 400) {
@@ -177,23 +294,26 @@ async function makeRawRequest(url, ses) {
       });
     });
     req.on('error', (err) => {
-      logHttp({
-        kind: 'raw',
-        method: 'GET',
-        url,
-        durationMs: Date.now() - startedAt,
-        requestHeaders,
-        error: err.message,
-        ok: false,
-      });
+      if (!lifecycle.finish()) return;
+      logRequestError('raw', 'GET', url, startedAt, requestHeaders, err);
       reject(err);
     });
     req.end();
   });
 }
 
-async function makeRawPostRequest(url, ses, body, extraHeaders = {}, cookieUrls = [url]) {
+async function makeRawPostRequest(
+  url,
+  ses,
+  body,
+  extraHeaders = {},
+  cookieUrls = [url],
+  options = {},
+) {
+  const { signal, timeoutMs = 60000 } = options;
+  throwIfAborted(signal);
   const cookieHeader = await buildCookieHeader(ses, cookieUrls);
+  throwIfAborted(signal);
 
   const requestHeaders = {
     ...extraHeaders,
@@ -210,15 +330,22 @@ async function makeRawPostRequest(url, ses, body, extraHeaders = {}, cookieUrls 
       req.setHeader(k, v);
     }
 
-    let responseBody = '';
+    const lifecycle = setupRequestCancellation(req, signal, timeoutMs, (error) => {
+      logRequestError('raw', 'POST', url, startedAt, requestHeaders, error);
+      reject(error);
+    });
+
+    const responseBody = createUtf8Accumulator();
     req.on('response', (response) => {
       const status = response.statusCode;
       const responseHeaders = response.headers;
 
       response.on('data', (chunk) => {
-        responseBody += chunk.toString();
+        responseBody.write(chunk);
       });
       response.on('end', () => {
+        if (!lifecycle.finish()) return;
+        const body = responseBody.end();
         const durationMs = Date.now() - startedAt;
         const ok = status < 400;
 
@@ -230,31 +357,25 @@ async function makeRawPostRequest(url, ses, body, extraHeaders = {}, cookieUrls 
           durationMs,
           requestHeaders,
           responseHeaders,
-          responseBody: truncate(responseBody),
+          responseBody: truncate(body),
           ok,
         });
 
-        if (status === 401 || status === 403) {
-          reject(new Error('AUTH_EXPIRED'));
+        const authError = classifyAuthStatus(status, responseHeaders, body);
+        if (authError) {
+          reject(authError);
           return;
         }
         if (status >= 400) {
-          reject(createHttpError(`HTTP ${status} ${url} body=${truncate(responseBody)}`, status));
+          reject(createHttpError(`HTTP ${status} ${url} body=${truncate(body)}`, status));
           return;
         }
-        resolve(responseBody);
+        resolve(body);
       });
     });
     req.on('error', (err) => {
-      logHttp({
-        kind: 'raw',
-        method: 'POST',
-        url,
-        durationMs: Date.now() - startedAt,
-        requestHeaders,
-        error: err.message,
-        ok: false,
-      });
+      if (!lifecycle.finish()) return;
+      logRequestError('raw', 'POST', url, startedAt, requestHeaders, err);
       reject(err);
     });
     if (body) req.write(body);
@@ -262,4 +383,9 @@ async function makeRawPostRequest(url, ses, body, extraHeaders = {}, cookieUrls 
   });
 }
 
-module.exports = { makeRequest, makeRawRequest, makeRawPostRequest };
+module.exports = {
+  makeRequest,
+  makeRawRequest,
+  makeRawPostRequest,
+  _test: { createUtf8Accumulator },
+};

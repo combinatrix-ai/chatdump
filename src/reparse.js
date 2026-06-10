@@ -46,7 +46,7 @@ function reparseOutdated(vaultPath, provider, accountKey) {
     }
 
     const fm = parseFrontmatter(content);
-    if (!fm || !fm.id) continue;
+    if (!fm?.id) continue;
     const current = Number(fm.parser_version || 0);
     if (current >= target) continue;
 
@@ -82,4 +82,4 @@ function reparseOutdated(vaultPath, provider, accountKey) {
   return reparsed;
 }
 
-module.exports = { reparseOutdated, parseFrontmatter };
+module.exports = { reparseOutdated, _test: { parseFrontmatter } };

@@ -42,6 +42,12 @@ function stopSync(accountId) {
   if (ac) ac.abort();
 }
 
+function stopAllSyncs() {
+  for (const ac of abortControllers.values()) {
+    ac.abort();
+  }
+}
+
 function setProgress(accountId, text) {
   if (text) accountProgress.set(accountId, text);
   else accountProgress.delete(accountId);
@@ -126,7 +132,9 @@ async function syncAccount(accountId, onStatus, options = {}) {
     onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
 
     try {
-      await ensureAuthenticated(account.provider, accountId);
+      await ensureAuthenticated(account.provider, accountId, {
+        interactive: effectiveOptions.interactive ?? false,
+      });
     } catch (_e) {
       const msg = 'Login required — session missing or expired';
       appendLog(accountId, { level: 'error', message: msg });
@@ -160,13 +168,12 @@ async function syncAccount(accountId, onStatus, options = {}) {
 
     const ses = getSession(accountId);
     const timestamps = account.timestamps || {};
+    let written = 0;
+    let fetched = 0;
+    let failedWrites = 0;
 
     try {
       let totalConvs = 0;
-
-      let written = 0;
-      let fetched = 0;
-      let failedWrites = 0;
       let saveCounter = 0;
 
       const accountKey = account.email || account.id;
@@ -255,16 +262,34 @@ async function syncAccount(accountId, onStatus, options = {}) {
       onStatus?.(failedWrites ? 'error' : 'idle', `${provider.displayName}: ${msg}`, accountId);
     } catch (e) {
       let msg;
-      if (e.message === 'AUTH_EXPIRED') {
+      if (abortController.signal.aborted) {
+        msg = `Stopped: ${written} files written, ${fetched} fetched`;
+        appendLog(accountId, {
+          level: 'info',
+          message: msg,
+          written,
+          fetched,
+          failedWrites,
+        });
+        updateAccount(accountId, {
+          timestamps,
+          lastSyncedAt: new Date().toISOString(),
+          status: 'ok',
+          lastError: null,
+        });
+        onStatus?.('idle', `${provider.displayName}: ${msg}`, accountId);
+      } else if (e.message === 'AUTH_EXPIRED') {
         msg = 'Session expired — re-login needed';
         updateAccount(accountId, { timestamps, status: 'expired', lastError: msg });
+        appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
+        onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
       } else {
         msg = `Sync failed: ${e.message}`;
         updateAccount(accountId, { timestamps, lastError: msg });
         console.error(`[${account.provider}] Sync error:`, e);
+        appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
+        onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
       }
-      appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
-      onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
     }
   } finally {
     syncingAccounts.delete(accountId);
@@ -276,11 +301,10 @@ async function syncAccount(accountId, onStatus, options = {}) {
 }
 
 async function syncAll(onStatus, options = {}) {
-  const accounts = options.includeDisabled
-    ? getAccounts()
-    : getAccounts().filter((a) => a.autoSync);
+  const { includeDisabled = false, ...syncOptions } = options;
+  const accounts = includeDisabled ? getAccounts() : getAccounts().filter((a) => a.autoSync);
   for (const account of accounts) {
-    await syncAccount(account.id, onStatus);
+    await syncAccount(account.id, onStatus, syncOptions);
   }
 }
 
@@ -317,6 +341,7 @@ module.exports = {
   startScheduler,
   stopScheduler,
   stopSync,
+  stopAllSyncs,
   setMenuRefreshCallback,
   isSyncing,
   getAccountProgress,

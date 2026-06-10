@@ -9,7 +9,7 @@ function isTruthyEnv(value) {
 const ENABLED = isTruthyEnv(process.env.DEBUG);
 const BODY_ENABLED = isTruthyEnv(process.env.DEBUG_BODY);
 
-const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'webui-sync');
+const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Chativist');
 let logPath = null;
 
 function ensureLogFile() {
@@ -53,6 +53,12 @@ function sanitizeEntry(entry) {
 
   if ('responseBody' in out && !BODY_ENABLED) {
     out.responseBody = '<omitted; set DEBUG_BODY=1 to include truncated response bodies>';
+  }
+  if (typeof out.responseBody === 'string') {
+    out.responseBody = out.responseBody.replace(
+      /("(?:accessToken|access_token|id_token|refresh_token)"\s*:\s*")[^"]+(")/g,
+      '$1<redacted>$2',
+    );
   }
 
   return out;

@@ -44,6 +44,12 @@ function shortenError(msg) {
   return s;
 }
 
+function truncateMenuText(value, maxLength = 120) {
+  const text = String(value || '');
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
 function buildAccountStatus(account) {
   const syncing = isSyncing(account.id);
   if (syncing) {
@@ -102,7 +108,7 @@ function buildMenu() {
 
     // Error banner at top if there's an error
     if (account.lastError) {
-      sub.push({ label: `⚠️ ${account.lastError}`, enabled: false });
+      sub.push({ label: `⚠️ ${truncateMenuText(account.lastError)}`, enabled: false });
       sub.push({ type: 'separator' });
     }
 
@@ -134,7 +140,7 @@ function buildMenu() {
       } else {
         sub.push({
           label: `Sync Now (${windowDays} days)`,
-          click: () => syncAccount(account.id, onStatus),
+          click: () => syncAccount(account.id, onStatus, { interactive: true }),
         });
       }
 
@@ -164,12 +170,20 @@ function buildMenu() {
           {
             label: 'by Creation date',
             enabled: !syncing,
-            click: () => syncAccount(account.id, onStatus, { mode: 'full-sync:created_at' }),
+            click: () =>
+              syncAccount(account.id, onStatus, {
+                interactive: true,
+                mode: 'full-sync:created_at',
+              }),
           },
           {
             label: 'by Last message time',
             enabled: !syncing,
-            click: () => syncAccount(account.id, onStatus, { mode: 'full-sync:last_message_at' }),
+            click: () =>
+              syncAccount(account.id, onStatus, {
+                interactive: true,
+                mode: 'full-sync:last_message_at',
+              }),
           },
         ],
       });
@@ -181,7 +195,7 @@ function buildMenu() {
     } else {
       sub.push({
         label: 'Sync Now',
-        click: () => syncAccount(account.id, onStatus),
+        click: () => syncAccount(account.id, onStatus, { interactive: true }),
       });
     }
 
@@ -275,8 +289,16 @@ function buildMenu() {
             const info = await prov.getAccountInfo(ses);
             if (info) {
               if (account.email && info.email && info.email !== account.email) {
+                try {
+                  await ses.clearStorageData();
+                } catch (e) {
+                  console.log(
+                    `[tray] Could not clear mismatched session storage for ${account.id}: ${e.message}`,
+                  );
+                }
                 updateAccount(account.id, {
-                  lastError: `Logged in as ${info.email}; expected ${account.email}`,
+                  status: 'expired',
+                  lastError: `Logged in as ${info.email}; expected ${account.email} — logged out, please re-login`,
                 });
                 buildMenu();
                 return;
@@ -346,83 +368,94 @@ function buildMenu() {
         }
         const result = await openLoginWindow(prov.name);
         const tempSes = result.session;
+        let accountId = null;
+        let persistSes = null;
 
-        // Step 1: Create account entry immediately with a temp ID
-        // Use timestamp to ensure uniqueness, will be updated with email later
-        const tempId = `${prov.name}:account-${Date.now()}`;
-        const accountId = tempId;
-
-        // Step 2: Copy cookies from temp session to persistent session
-        const persistSes = getSession(accountId);
-        const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
-        await copyProviderCookies(cookies, persistSes, accountId);
-
-        // Step 3: Save account entry right away so it appears in the menu
-        upsertAccount({
-          id: accountId,
-          provider: prov.name,
-          email: '',
-          name: `${prov.displayName} account`,
-          status: 'ok',
-        });
-        buildMenu();
-
-        // Step 4: Try to get account info — multiple strategies
-        let info = null;
         try {
-          // Strategy 1: Parse from API response fetched via browser
-          if (result.accountInfo && prov.parseAccountInfo) {
-            info = prov.parseAccountInfo(result.accountInfo);
-          }
-          // Strategy 2: Parse from cookies directly
-          console.log(
-            `[tray] result.cookies keys: ${Object.keys(result.cookies || {}).join(', ')}`,
-          );
-          if (!info?.email && result.cookies && prov.parseAccountFromCookies) {
-            const cookieInfo = prov.parseAccountFromCookies(result.cookies);
-            if (cookieInfo.email || cookieInfo.name) {
-              info = { ...info, ...cookieInfo };
-            }
-          }
-          // Strategy 3: API call with session
-          if (!info?.email) {
-            const apiInfo = await prov.getAccountInfo(persistSes);
-            if (apiInfo) info = { ...info, ...apiInfo };
-          }
-        } catch {
-          /* ignore */
-        }
+          // Step 1: Create account entry immediately with a temp ID
+          // Use timestamp to ensure uniqueness, will be updated with email later
+          const tempId = `${prov.name}:account-${Date.now()}`;
+          accountId = tempId;
 
-        let syncId = accountId;
-        if (info?.email) {
-          const realId = `${prov.name}:${info.email}`;
-          // Remove temp entry, create proper one
-          removeAccount(accountId);
+          // Step 2: Copy cookies from temp session to persistent session
+          persistSes = getSession(accountId);
+          const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
+          await copyProviderCookies(cookies, persistSes, accountId);
 
-          // Re-copy cookies to the real account partition
-          const realSes = getSession(realId);
-          await copyProviderCookies(cookies, realSes, realId);
-          await clearSessionStorage(persistSes, accountId);
-
+          // Step 3: Save account entry right away so it appears in the menu
           upsertAccount({
-            id: realId,
+            id: accountId,
             provider: prov.name,
-            email: info.email,
-            name: info.name,
+            email: '',
+            name: `${prov.displayName} account`,
             status: 'ok',
           });
-          syncId = realId;
-        } else if (info?.name) {
-          // Got name but no email — update the temp entry
-          updateAccount(accountId, { name: info.name });
+          buildMenu();
+
+          // Step 4: Try to get account info — multiple strategies
+          let info = null;
+          try {
+            // Strategy 1: Parse from API response fetched via browser
+            if (result.accountInfo && prov.parseAccountInfo) {
+              info = prov.parseAccountInfo(result.accountInfo);
+            }
+            // Strategy 2: Parse from cookies directly
+            console.log(
+              `[tray] result.cookies keys: ${Object.keys(result.cookies || {}).join(', ')}`,
+            );
+            if (!info?.email && result.cookies && prov.parseAccountFromCookies) {
+              const cookieInfo = prov.parseAccountFromCookies(result.cookies);
+              if (cookieInfo.email || cookieInfo.name) {
+                info = { ...info, ...cookieInfo };
+              }
+            }
+            // Strategy 3: API call with session
+            if (!info?.email) {
+              const apiInfo = await prov.getAccountInfo(persistSes);
+              if (apiInfo) info = { ...info, ...apiInfo };
+            }
+          } catch {
+            /* ignore */
+          }
+
+          let syncId = accountId;
+          if (info?.email) {
+            const realId = `${prov.name}:${info.email}`;
+            // Remove temp entry, create proper one
+            removeAccount(accountId);
+
+            // Re-copy cookies to the real account partition
+            const realSes = getSession(realId);
+            await copyProviderCookies(cookies, realSes, realId);
+
+            upsertAccount({
+              id: realId,
+              provider: prov.name,
+              email: info.email,
+              name: info.name,
+              status: 'ok',
+            });
+            syncId = realId;
+          } else if (info?.name) {
+            // Got name but no email — update the temp entry
+            updateAccount(accountId, { name: info.name });
+          }
+
+          buildMenu();
+
+          // Kick off the first sync immediately after a successful add.
+          syncAccount(syncId, onStatus).catch((e) => {
+            console.error(`Initial sync failed for ${syncId}: ${e.message}`);
+          });
+        } finally {
+          if (
+            accountId &&
+            persistSes &&
+            !getAccounts().some((account) => account.id === accountId)
+          ) {
+            await clearSessionStorage(persistSes, accountId);
+          }
         }
-
-        buildMenu();
-
-        // Kick off the first sync immediately after a successful add.
-        syncAccount(syncId, onStatus).catch((e) => {
-          console.error(`Initial sync failed for ${syncId}: ${e.message}`);
-        });
       } catch (e) {
         console.error(`Add account failed: ${e.message}`);
       }
@@ -523,7 +556,7 @@ function buildMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   tray.setContextMenu(menu);
-  tray.setToolTip(`webui-sync — ${header}`);
+  tray.setToolTip(`Chativist — ${header}`);
   applyTrayIcon();
 }
 

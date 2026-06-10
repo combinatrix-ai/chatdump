@@ -52,4 +52,4 @@ function readRawCache(vaultPath, providerSubdir, accountKey, id) {
   }
 }
 
-module.exports = { writeRawCache, readRawCache, cachePath, cacheDir };
+module.exports = { writeRawCache, readRawCache };

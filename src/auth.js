@@ -175,9 +175,11 @@ function openLoginWindow(providerName, accountId) {
   });
 }
 
-async function ensureAuthenticated(providerName, accountId) {
+async function ensureAuthenticated(providerName, accountId, options = {}) {
+  const { interactive = false } = options;
   const cookie = await getSessionCookie(providerName, accountId);
   if (cookie) return cookie;
+  if (!interactive) throw new Error('AUTH_EXPIRED');
   const result = await openLoginWindow(providerName, accountId);
   return result.cookie;
 }

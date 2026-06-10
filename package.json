@@ -21,7 +21,8 @@
     "dist:mac": "electron-builder --mac",
     "dist:mas": "SKIP_NOTARIZE=1 electron-builder --mac mas",
     "dist:mas-dev": "SKIP_NOTARIZE=1 electron-builder --mac mas-dev",
-    "lint": "biome check src",
+    "test": "node --test test/",
+    "lint": "biome check src test",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src",
     "knip": "knip"

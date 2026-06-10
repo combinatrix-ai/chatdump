@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["src/**", "*.js"]
+    "includes": ["src/**", "test/**", "*.js"]
   },
   "formatter": {
     "enabled": true,

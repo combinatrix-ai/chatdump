@@ -10,6 +10,9 @@ npm install
 npm start
 ```
 
+`electron-store` is pinned to 8.x because 9+ is ESM-only and this codebase is
+CommonJS.
+
 ## Release (macOS)
 
 Tag a version and CI handles the rest:

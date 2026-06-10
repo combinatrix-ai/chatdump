@@ -8,10 +8,10 @@
     "email": "yotaro.katayama@combinatrix.ai"
   },
   "license": "MIT",
-  "homepage": "https://github.com/hmirin/webui-sync",
+  "homepage": "https://github.com/combinatrix-ai/chativist",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hmirin/webui-sync.git"
+    "url": "https://github.com/combinatrix-ai/chativist"
   },
   "main": "src/main.js",
   "scripts": {
@@ -102,7 +102,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
     "@electron/notarize": "^2.5.0",
-    "electron": "^33.0.0",
+    "electron": "^42.4.0",
     "electron-builder": "^25.0.0",
     "knip": "^6.7.0"
   }

@@ -22,8 +22,14 @@ const {
 const { store, getAccounts } = require('./store');
 const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
+const { getCliArgs, runCli, _test: cliTest } = require('./cli');
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const cliArgs = getCliArgs();
+const isCliMode = cliArgs !== null;
+if (isCliMode) {
+  console.log = (...args) => console.error(...args);
+}
+const hasSingleInstanceLock = isCliMode ? true : app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   console.log('[main] Another Chativist instance is already running; exiting');
   app.quit();
@@ -130,6 +136,23 @@ async function cleanupOrphanPartitions() {
 
 if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
+    if (isCliMode) {
+      let exitCode = 1;
+      try {
+        exitCode = await runCli(cliArgs);
+      } catch (e) {
+        if (e instanceof cliTest.CliUsageError) {
+          console.error(e.message);
+          cliTest.printHelp(process.stderr);
+        } else {
+          console.error(e.stack || e.message);
+        }
+      } finally {
+        app.exit(exitCode);
+      }
+      return;
+    }
+
     ensureDefaultVaultPath();
     await migrateCookies();
     await cleanupOrphanPartitions();

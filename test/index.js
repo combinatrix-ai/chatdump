@@ -1,4 +1,8 @@
 require('./request.test');
+require('./ask.test');
+require('./cli.test');
+require('./conversation.test');
+require('./mcp.test');
 require('./openai.test');
 require('./gemini.test');
 require('./claude.test');

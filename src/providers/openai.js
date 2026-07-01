@@ -92,6 +92,25 @@ const provider = {
     }
   },
 
+  async fetchConversationById(ses, conversationId, options = {}) {
+    const token = await provider.getAccessToken(ses, { signal: options.signal });
+    if (!token) {
+      throw new Error('AUTH_EXPIRED');
+    }
+
+    return makeRequest(
+      `${BASE}/backend-api/conversation/${encodeURIComponent(conversationId)}`,
+      ses,
+      {
+        Authorization: `Bearer ${token}`,
+      },
+      {
+        signal: options.signal,
+        timeoutMs: options.timeoutMs || 60000,
+      },
+    );
+  },
+
   async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
     const mode = options.mode || 'sync';
     let token = await provider.getAccessToken(ses, { signal: options.signal });
@@ -306,6 +325,11 @@ const provider = {
       }
     }
     return []; // Conversations already written via onConversation callback
+  },
+
+  async askWithBrowser(ses, options = {}) {
+    const { askChatGptInBrowser } = require('./openai-ask');
+    return askChatGptInBrowser(ses, options);
   },
 
   convertToMarkdown(conversation) {

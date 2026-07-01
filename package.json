@@ -16,6 +16,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "cli": "electron . cli",
+    "mcp": "electron . cli mcp",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
@@ -97,7 +99,9 @@
     }
   },
   "dependencies": {
-    "electron-store": "^8.2.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "electron-store": "^8.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",

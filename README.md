@@ -68,7 +68,7 @@ Then pass the returned `conversationId` to fetch the full transcript:
   "tool": "conversation",
   "arguments": {
     "accountId": "openai:user@example.com",
-    "conversationId": "6a447140-bf20-83e8-a387-fa355c5f31c1"
+    "conversationId": "123e4567-e89b-42d3-a456-426614174002"
   }
 }
 ```

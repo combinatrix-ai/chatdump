@@ -21,7 +21,7 @@ Chativist fetches conversations from three AI chat providers. Each has a differe
 | Single conversation | GET | `/api/organizations/{orgId}/chat_conversations/{uuid}` |
 
 ### Deduplication
-- **Unique key**: `conversation.uuid` (UUID v4, e.g. `1d5cbd47-041d-4073-aae3-73960bf873c3`)
+- **Unique key**: `conversation.uuid` (UUID v4, e.g. `123e4567-e89b-42d3-a456-426614174000`)
 - **Stored in timestamps**: `{ [uuid]: updated_at }` where `updated_at` is an ISO 8601 string
 - **Change detection**: Compare `conversation.updated_at` from the list API against stored value. If different, re-fetch the full conversation.
 - **File naming**: `{YYYY-MM-DD}_{sanitized_title}_{uuid_first8}.md`
@@ -75,7 +75,7 @@ Chativist fetches conversations from three AI chat providers. Each has a differe
 | Single conversation | GET | `/backend-api/conversation/{id}` (with Bearer token) |
 
 ### Deduplication
-- **Unique key**: `conversation.id` (UUID v4, e.g. `69d2543c-224a-40b1-be65-bcdfb6a8bc2a`)
+- **Unique key**: `conversation.id` (UUID v4, e.g. `123e4567-e89b-42d3-a456-426614174001`)
 - **Stored in timestamps**: `{ [id]: update_time }`, normalized to ISO milliseconds.
 - **Change detection**: Compare normalized `conversation.update_time` from the list API against stored value.
 - **File naming**: `{YYYY-MM-DD}_{sanitized_title}_{id_first8}.md`

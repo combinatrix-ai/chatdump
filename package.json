@@ -20,7 +20,7 @@
     "mcp": "electron . cli mcp",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
+    "dist:mac": "electron-builder --mac --publish never",
     "dist:mas": "SKIP_NOTARIZE=1 electron-builder --mac mas",
     "dist:mas-dev": "SKIP_NOTARIZE=1 electron-builder --mac mas-dev",
     "test": "node --test test/",

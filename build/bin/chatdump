@@ -2,11 +2,16 @@
 # CLI wrapper installed on PATH (e.g. /usr/local/bin/chatdump) as a symlink to
 # this file. Resolves its own real location -- following symlinks with a
 # portable loop, since `readlink -f` is not available on every macOS /bin/sh
-# -- and execs the packaged Electron binary alongside it.
+# -- then runs the packaged app's pure-node CLI entry point as a plain Node
+# process (no Chromium), which delegates to the already-running GUI app over
+# a Unix socket instead of launching a second Electron process against the
+# same userData profile.
 #
 # This script ships at Contents/Resources/bin/chatdump inside the app
 # bundle, so the Electron binary sits two directories up and over at
-# Contents/MacOS/chatdump.
+# Contents/MacOS/chatdump, and the app's JS sources sit alongside this
+# script's parent at Contents/Resources/app.asar (or Contents/Resources/app
+# when built without asar).
 #
 # A wrapper (rather than symlinking straight to the Electron binary) avoids
 # confusing Electron's framework/resource path resolution, which keys off
@@ -24,4 +29,20 @@ while [ -L "$SOURCE" ]; do
 done
 DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 
-exec "$DIR/../../MacOS/chatdump" "$@"
+MACOS_BIN="$DIR/../../MacOS/chatdump"
+RESOURCES_DIR="$DIR/.."
+
+# electron-builder packs the app into Resources/app.asar (a single file) by
+# default; an unpacked build puts the sources in a plain Resources/app dir.
+if [ -f "$RESOURCES_DIR/app.asar" ]; then
+  APP_DIR="$RESOURCES_DIR/app.asar"
+else
+  APP_DIR="$RESOURCES_DIR/app"
+fi
+
+# ELECTRON_RUN_AS_NODE gives us plain Node (no Chromium, no second app
+# window) while still being able to transparently read files out of the
+# asar archive. cli-entry.js and everything it requires must not depend on
+# any electron API for this to work.
+export ELECTRON_RUN_AS_NODE=1
+exec "$MACOS_BIN" "$APP_DIR/src/cli-entry.js" "$@"

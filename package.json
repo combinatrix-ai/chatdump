@@ -16,7 +16,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "cli": "electron . cli",
+    "cli": "ELECTRON_RUN_AS_NODE=1 electron src/cli-entry.js",
     "mcp": "electron . cli mcp",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",

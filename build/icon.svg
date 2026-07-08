@@ -1,0 +1,51 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#233150"/>
+      <stop offset="1" stop-color="#0d1424"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fda44c"/>
+      <stop offset="1" stop-color="#ec5f14"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3ddac0"/>
+      <stop offset="1" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="white" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e9edf4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.05" r="0.9">
+      <stop offset="0" stop-color="#4a5d8a" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#4a5d8a" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+    <filter id="ds" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" fill="url(#glow)"/>
+
+    <g transform="translate(512 500) scale(1.14) translate(-512 -500)">
+      <g filter="url(#ds)" transform="rotate(-8 445 360)">
+        <rect x="270" y="250" width="350" height="220" rx="66" fill="url(#orange)"/>
+      </g>
+
+      <g filter="url(#ds)" transform="rotate(5 595 440)">
+        <rect x="420" y="330" width="350" height="220" rx="66" fill="url(#teal)"/>
+      </g>
+
+      <g filter="url(#ds)">
+        <path d="M326 690 h-8 c-42 0 -68 -34 -68 -76 v-108 c0 -42 34 -76 76 -76 h368 c42 0 76 34 76 76 v108 c0 42 -34 76 -76 76 h-268 l-72 74 c-10 10 -28 4 -28 -12 z" fill="url(#white)"/>
+        <rect x="306" y="498" width="256" height="30" rx="15" fill="#1b2942"/>
+        <rect x="306" y="558" width="188" height="30" rx="15" fill="#94a0b4"/>
+      </g>
+    </g>
+  </g>
+</svg>

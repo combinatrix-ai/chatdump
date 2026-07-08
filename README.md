@@ -1,7 +1,7 @@
 # chatdump
 
 chatdump is a tray-only macOS app that archives your AI chat conversations
-(Claude, ChatGPT, Gemini) into an Obsidian vault as Markdown. You log in to
+(Claude, ChatGPT, Gemini) into plain Markdown files in a folder you choose. You log in to
 each provider once inside an embedded browser window; chatdump keeps the
 resulting session cookies locally and uses them to periodically pull your
 conversations from each provider's own web API, converting them to Markdown
@@ -135,7 +135,7 @@ The server exposes four tools:
   returns Markdown by default, and returns the provider raw JSON too when
   `includeRaw` is `true`.
 - `accounts` — list configured accounts and sync status.
-- `sync` — sync selected accounts to their configured Obsidian vaults.
+- `sync` — sync selected accounts to their configured folders.
 
 It also exposes the `chatdump://accounts` resource for configured accounts as
 JSON.

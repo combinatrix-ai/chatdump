@@ -19,7 +19,7 @@ The project already has these MAS-specific pieces:
 - `build/entitlements.mas.inherit.plist`
 - security-scoped bookmarks for persisted vault folder access
 
-The important runtime behavior is that users must choose their Obsidian vault
+The important runtime behavior is that users must choose their destination folder
 from the app menu. In MAS builds, chatdump stores the security-scoped bookmark
 returned by the folder picker and activates it while writing Markdown/cache
 files. A raw saved path is not enough for persistent access outside the sandbox.

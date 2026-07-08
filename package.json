@@ -2,7 +2,7 @@
   "name": "chatdump",
   "productName": "chatdump",
   "version": "1.0.0",
-  "description": "Archive your AI chat conversations (Claude, ChatGPT, Gemini) to an Obsidian vault as Markdown.",
+  "description": "Archive your AI chat conversations (Claude, ChatGPT, Gemini) as plain Markdown files on your Mac.",
   "author": {
     "name": "Yotaro Katayama",
     "email": "yotaro.katayama@combinatrix.ai"

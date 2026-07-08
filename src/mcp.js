@@ -183,7 +183,7 @@ async function startMcpServer() {
     {
       title: 'Sync chatdump accounts',
       description:
-        'Sync configured chatdump accounts to their Obsidian vaults using existing login sessions.',
+        'Sync configured chatdump accounts to their destination folders using existing login sessions.',
       inputSchema: {
         accountIds: z.array(z.string()).optional(),
         provider: z.string().optional(),

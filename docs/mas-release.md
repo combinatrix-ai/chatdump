@@ -1,6 +1,6 @@
 # Mac App Store release guide
 
-This is the checklist for preparing a Mac App Store build of Chativist.
+This is the checklist for preparing a Mac App Store build of chatdump.
 
 The MAS build is different from the direct DMG release:
 
@@ -20,28 +20,28 @@ The project already has these MAS-specific pieces:
 - security-scoped bookmarks for persisted vault folder access
 
 The important runtime behavior is that users must choose their Obsidian vault
-from the app menu. In MAS builds, Chativist stores the security-scoped bookmark
+from the app menu. In MAS builds, chatdump stores the security-scoped bookmark
 returned by the folder picker and activates it while writing Markdown/cache
 files. A raw saved path is not enough for persistent access outside the sandbox.
 
 ## One-time Apple setup
 
 1. Register or confirm the explicit App ID:
-   - Bundle ID: `ai.combinatrix.chativist`
+   - Bundle ID: `ai.combinatrix.chatdump`
    - Team ID: `3Y275A5TZ8`
    - Capability: App Sandbox
-   - App Group: `3Y275A5TZ8.ai.combinatrix.chativist`
+   - App Group: `3Y275A5TZ8.ai.combinatrix.chatdump`
 
 2. Create the App Store Connect app record:
    - Platform: macOS
-   - Name: `Chativist`
-   - Bundle ID: `ai.combinatrix.chativist`
-   - SKU: choose a stable internal value, for example `chativist-macos`
+   - Name: `chatdump`
+   - Bundle ID: `ai.combinatrix.chatdump`
+   - SKU: choose a stable internal value, for example `chatdump-macos`
 
 3. Create signing assets:
    - `Mac App Distribution` certificate for the MAS app bundle.
    - `Mac Installer Distribution` certificate for the submitted installer pkg.
-   - `Mac App Store Connect` provisioning profile for `ai.combinatrix.chativist`.
+   - `Mac App Store Connect` provisioning profile for `ai.combinatrix.chatdump`.
    - Regenerate the profile after enabling the app group so the profile includes
      every entitlement in `build/entitlements.mas.plist`.
 
@@ -75,7 +75,7 @@ Before building:
 2. Make sure the `Mac App Distribution` and `Mac Installer Distribution`
    certificates are available in the keychain.
 3. Make sure the Mac App Store provisioning profile for
-   `ai.combinatrix.chativist` is installed.
+   `ai.combinatrix.chatdump` is installed.
 
 Build:
 
@@ -98,7 +98,7 @@ complete metadata, and submit for review.
 
 ## Review notes to prepare
 
-Chativist is a menu bar app, so include clear reviewer notes:
+chatdump is a menu bar app, so include clear reviewer notes:
 
 - The app runs from the macOS menu bar and hides the Dock icon.
 - To test, open the menu bar icon, choose `Add Account...`, sign in to a

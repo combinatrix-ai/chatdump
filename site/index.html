@@ -1,7 +1,7 @@
-<title>Chativist — file your AI conversations into Obsidian</title>
+<title>chatdump — file your AI conversations into Obsidian</title>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Chativist is a free, open-source macOS menu-bar app that archives your Claude, ChatGPT, and Gemini conversations into plain Markdown files in your Obsidian vault. Local-only, no telemetry.">
+<meta name="description" content="chatdump is a free, open-source macOS menu-bar app that archives your Claude, ChatGPT, and Gemini conversations into plain Markdown files in your Obsidian vault. Local-only, no telemetry.">
 
 <style>
   :root {
@@ -693,16 +693,16 @@
   <div class="wrap">
     <a class="brand" href="#top">
       <img src="assets/icon.png" alt="">
-      Chativist
+      chatdump
     </a>
     <div class="nav-links">
       <a href="#features">Features</a>
       <a href="#privacy">Privacy</a>
       <a href="#mcp">MCP &amp; CLI</a>
-      <a href="https://github.com/combinatrix-ai/chativist">GitHub</a>
+      <a href="https://github.com/combinatrix-ai/chatdump">GitHub</a>
     </div>
     <div class="nav-cta">
-      <a class="btn btn-primary btn-small" href="https://github.com/combinatrix-ai/chativist/releases/latest">Download</a>
+      <a class="btn btn-primary btn-small" href="https://github.com/combinatrix-ai/chatdump/releases/latest">Download</a>
     </div>
   </div>
 </nav>
@@ -714,15 +714,15 @@
         <span class="eyebrow">macOS menu bar · free &amp; open source</span>
         <h1>Every conversation,<br>filed where it <em>belongs</em>.</h1>
         <p class="lede">
-          Chativist sits quietly in your menu bar and archives your Claude, ChatGPT, and
+          chatdump sits quietly in your menu bar and archives your Claude, ChatGPT, and
           Gemini conversations into plain Markdown files inside your Obsidian vault.
           Nothing leaves your Mac.
         </p>
         <div class="hero-ctas">
-          <a class="btn btn-primary" href="https://github.com/combinatrix-ai/chativist/releases/latest">
+          <a class="btn btn-primary" href="https://github.com/combinatrix-ai/chatdump/releases/latest">
             ↓ Download for macOS
           </a>
-          <a class="btn btn-ghost" href="https://github.com/combinatrix-ai/chativist">
+          <a class="btn btn-ghost" href="https://github.com/combinatrix-ai/chatdump">
             View source on GitHub
           </a>
         </div>
@@ -731,7 +731,7 @@
       <div class="hero-visual">
         <div class="ring"></div>
         <div class="ring r2"></div>
-        <img class="hero-icon" src="assets/icon.png" alt="Chativist app icon — a stack of conversation bubbles">
+        <img class="hero-icon" src="assets/icon.png" alt="chatdump app icon — a stack of conversation bubbles">
         <div class="hero-badges">
           <span class="hero-badge b1">No dock icon</span>
           <span class="hero-badge b2">No telemetry</span>
@@ -754,7 +754,7 @@
           <span class="screenshot-placeholder">Menu bar preview</span>
           <img
             src="assets/menubar.png"
-            alt="Chativist's menu bar dropdown, listing connected accounts and sync status"
+            alt="chatdump's menu bar dropdown, listing connected accounts and sync status"
             onerror="this.style.display='none'">
         </div>
       </div>
@@ -829,8 +829,8 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
 <span class="muted">│   └──</span> 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
 <span class="muted">├──</span> <span class="accent">gemini/alex@example.com/</span>
 <span class="muted">│   └──</span> 2026-07-01_Trip_photo_captions_3b8cf104.md
-<span class="muted">└── .chativist/cache/…</span></pre>
-        <p class="screenshot-caption">One folder per provider, one per account. Raw provider JSON is cached under <code>.chativist/</code> alongside the notes.</p>
+<span class="muted">└── .chatdump/cache/…</span></pre>
+        <p class="screenshot-caption">One folder per provider, one per account. Raw provider JSON is cached under <code>.chatdump/</code> alongside the notes.</p>
       </div>
     </div>
   </section>
@@ -883,7 +883,7 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
         <span class="eyebrow">Own your data</span>
         <h2>Nothing leaves your Mac.</h2>
         <p>
-          Chativist has no backend. Signing in to a provider opens an embedded browser
+          chatdump has no backend. Signing in to a provider opens an embedded browser
           window right inside the app; the resulting session cookies are written to
           local storage on your Mac and never sent anywhere else. Every sync reads
           conversations from the provider and writes Markdown straight to disk —
@@ -932,7 +932,7 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
           Speak to it from the command line.
         </h2>
         <p style="color:var(--ink-soft); font-size:1.02rem; margin:0 0 1.4rem;">
-          Chativist doubles as a stdio MCP server, so any MCP-aware agent — Claude
+          chatdump doubles as a stdio MCP server, so any MCP-aware agent — Claude
           Code, Codex, or your own harness — can read and search your archive
           directly. It reuses the same accounts and sessions as the menu bar app.
         </p>
@@ -961,12 +961,12 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
       </div>
       <div>
         <p class="code-title">Run it</p>
-        <pre class="code-block"><span class="muted">$</span> /Applications/Chativist.app/Contents/MacOS/Chativist cli mcp</pre>
+        <pre class="code-block"><span class="muted">$</span> /Applications/chatdump.app/Contents/MacOS/chatdump cli mcp</pre>
         <p class="code-title">Project-scoped MCP client</p>
         <pre class="code-block">{
   <span class="accent">"mcpServers"</span>: {
-    <span class="accent">"chativist"</span>: {
-      <span class="accent">"command"</span>: <span class="str">"/Applications/Chativist.app/Contents/MacOS/Chativist"</span>,
+    <span class="accent">"chatdump"</span>: {
+      <span class="accent">"command"</span>: <span class="str">"/Applications/chatdump.app/Contents/MacOS/chatdump"</span>,
       <span class="accent">"args"</span>: [<span class="str">"cli"</span>, <span class="str">"mcp"</span>]
     }
   }
@@ -988,13 +988,13 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
     <div class="wrap">
       <div class="footer-grid">
         <div>
-          <div class="brand-line">Chativist</div>
+          <div class="brand-line">chatdump</div>
           <p class="tagline">A menu-bar app that archives your AI conversations to Markdown, so they live in your notes instead of someone else's database.</p>
         </div>
         <div class="footer-links">
-          <a href="https://github.com/combinatrix-ai/chativist">GitHub</a>
-          <a href="https://github.com/combinatrix-ai/chativist/releases/latest">Releases</a>
-          <a href="https://github.com/combinatrix-ai/chativist/blob/main/LICENSE">MIT License</a>
+          <a href="https://github.com/combinatrix-ai/chatdump">GitHub</a>
+          <a href="https://github.com/combinatrix-ai/chatdump/releases/latest">Releases</a>
+          <a href="https://github.com/combinatrix-ai/chatdump/blob/main/LICENSE">MIT License</a>
         </div>
       </div>
       <div class="footer-fine">

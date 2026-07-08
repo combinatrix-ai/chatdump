@@ -16,19 +16,19 @@ function getCliArgs(argv = process.argv) {
 }
 
 function printHelp(stream = process.stdout) {
-  stream.write(`Chativist CLI
+  stream.write(`chatdump CLI
 
 Usage:
-  chativist cli list [--json]
-  chativist cli sync [--all] [--include-disabled] [--account <id>] [--provider <name>] [--since-days <days>] [--full-sync <created_at|last_message_at>] [--json]
-  chativist cli mcp
+  chatdump cli list [--json]
+  chatdump cli sync [--all] [--include-disabled] [--account <id>] [--provider <name>] [--since-days <days>] [--full-sync <created_at|last_message_at>] [--json]
+  chatdump cli mcp
 
 Examples:
-  chativist cli list
-  chativist cli sync --all
-  chativist cli sync --account openai:user@example.com --since-days 7
-  chativist cli sync --account openai:user@example.com --full-sync created_at
-  chativist cli mcp
+  chatdump cli list
+  chatdump cli sync --all
+  chatdump cli sync --account openai:user@example.com --since-days 7
+  chatdump cli sync --account openai:user@example.com --full-sync created_at
+  chatdump cli mcp
 
 Notes:
   The CLI reuses the Electron app's configured accounts and persisted login sessions.

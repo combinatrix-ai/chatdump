@@ -6,7 +6,7 @@ function sanitizeSegment(s) {
 }
 
 function cacheDir(vaultPath, providerSubdir, accountKey) {
-  return path.join(vaultPath, '.chativist', 'cache', providerSubdir, sanitizeSegment(accountKey));
+  return path.join(vaultPath, '.chatdump', 'cache', providerSubdir, sanitizeSegment(accountKey));
 }
 
 function cachePath(vaultPath, providerSubdir, accountKey, id) {

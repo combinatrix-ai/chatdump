@@ -346,10 +346,10 @@ function buildMenu() {
               title: 'Heads up — ChatGPT-only side effect',
               message: "Reading a chat inevitably bumps it to the top of ChatGPT's sidebar.",
               detail:
-                "ChatGPT's API has no read-only fetch — every conversation chativist " +
+                "ChatGPT's API has no read-only fetch — every conversation chatdump " +
                 'reads bumps its server-side update_time, so threads jump to the top ' +
                 'of your ChatGPT sidebar one by one as sync runs.\n\n' +
-                'chativist reads them oldest-touched first, so once sync finishes the ' +
+                'chatdump reads them oldest-touched first, so once sync finishes the ' +
                 'sidebar settles back to its natural order (most-recently-used at top). ' +
                 'The disturbance is temporary.\n\n' +
                 'Claude and Gemini are not affected.',
@@ -556,7 +556,7 @@ function buildMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   tray.setContextMenu(menu);
-  tray.setToolTip(`Chativist — ${header}`);
+  tray.setToolTip(`chatdump — ${header}`);
   applyTrayIcon();
 }
 

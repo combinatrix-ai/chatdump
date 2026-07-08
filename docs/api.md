@@ -2,7 +2,7 @@
 
 ## Overview
 
-Chativist fetches conversations from three AI chat providers. Each has a different internal API, authentication mechanism, and data structure. This document describes how each provider works, including deduplication and change detection logic.
+chatdump fetches conversations from three AI chat providers. Each has a different internal API, authentication mechanism, and data structure. This document describes how each provider works, including deduplication and change detection logic.
 
 ---
 
@@ -269,7 +269,7 @@ Gemini's API is reverse-engineered from Google's internal WIZ framework. RPC IDs
 4. For changed/new conversations: fetch full conversation
 5. Convert to Markdown (with YAML frontmatter)
 6. Write to {vault}/{provider}/{email}/{date}_{title}_{id}.md
-   Raw API response cached to {vault}/.chativist/cache/{provider}/{email}/{id}.json
+   Raw API response cached to {vault}/.chatdump/cache/{provider}/{email}/{id}.json
 7. Update stored timestamps
 ```
 

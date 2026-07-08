@@ -66,8 +66,8 @@ jobs:
           set -euo pipefail
           DMG=$(ls dist-electron/*.dmg | head -1)
           MOUNT=$(hdiutil attach -nobrowse -readonly "$DMG" | grep -o '/Volumes/.*' | tail -1)
-          spctl -a -vv "$MOUNT/Chativist.app"
-          xcrun stapler validate "$MOUNT/Chativist.app"
+          spctl -a -vv "$MOUNT/chatdump.app"
+          xcrun stapler validate "$MOUNT/chatdump.app"
           hdiutil detach "$MOUNT"
 
       - name: Publish GitHub Release

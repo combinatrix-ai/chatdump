@@ -78,7 +78,7 @@ async function startMcpServer() {
 
   const server = new McpServer(
     {
-      name: 'chativist-mcp',
+      name: 'chatdump-mcp',
       version: packageJson.version,
     },
     {
@@ -91,9 +91,9 @@ async function startMcpServer() {
   server.registerTool(
     'ask',
     {
-      title: 'Ask through a Chativist browser session',
+      title: 'Ask through a chatdump browser session',
       description:
-        'Ask a question using a configured Chativist browser session. Currently supports ChatGPT accounts.',
+        'Ask a question using a configured chatdump browser session. Currently supports ChatGPT accounts.',
       inputSchema: {
         prompt: z.string().min(1),
         accountId: z.string().optional(),
@@ -105,7 +105,7 @@ async function startMcpServer() {
     async (input) => {
       await server.sendLoggingMessage({
         level: 'info',
-        logger: 'chativist',
+        logger: 'chatdump',
         data: {
           tool: 'ask',
           provider: input.provider || 'openai',
@@ -118,7 +118,7 @@ async function startMcpServer() {
 
       await server.sendLoggingMessage({
         level: 'info',
-        logger: 'chativist',
+        logger: 'chatdump',
         data: {
           tool: 'ask',
           provider: result.provider,
@@ -134,7 +134,7 @@ async function startMcpServer() {
   server.registerTool(
     'conversation',
     {
-      title: 'Get a Chativist conversation by id',
+      title: 'Get a chatdump conversation by id',
       description:
         'Fetch a full conversation by provider conversation id. Currently supports ChatGPT conversation ids.',
       inputSchema: {
@@ -163,8 +163,8 @@ async function startMcpServer() {
   server.registerTool(
     'accounts',
     {
-      title: 'List Chativist accounts',
-      description: 'List configured Chativist accounts and their sync status.',
+      title: 'List chatdump accounts',
+      description: 'List configured chatdump accounts and their sync status.',
       inputSchema: {
         provider: z.string().optional(),
         includeDisabled: z.boolean().optional(),
@@ -181,9 +181,9 @@ async function startMcpServer() {
   server.registerTool(
     'sync',
     {
-      title: 'Sync Chativist accounts',
+      title: 'Sync chatdump accounts',
       description:
-        'Sync configured Chativist accounts to their Obsidian vaults using existing login sessions.',
+        'Sync configured chatdump accounts to their Obsidian vaults using existing login sessions.',
       inputSchema: {
         accountIds: z.array(z.string()).optional(),
         provider: z.string().optional(),
@@ -215,7 +215,7 @@ async function startMcpServer() {
         const messages = [];
         await server.sendLoggingMessage({
           level: 'info',
-          logger: 'chativist',
+          logger: 'chatdump',
           data: { accountId: account.id, message: 'sync started' },
         });
 
@@ -227,7 +227,7 @@ async function startMcpServer() {
             server
               .sendLoggingMessage({
                 level: state === 'error' ? 'error' : 'info',
-                logger: 'chativist',
+                logger: 'chatdump',
                 data: { accountId: account.id, ...entry },
               })
               .catch(() => {});
@@ -260,10 +260,10 @@ async function startMcpServer() {
 
   server.registerResource(
     'accounts',
-    'chativist://accounts',
+    'chatdump://accounts',
     {
-      title: 'Chativist accounts',
-      description: 'Configured Chativist accounts as JSON.',
+      title: 'chatdump accounts',
+      description: 'Configured chatdump accounts as JSON.',
       mimeType: 'application/json',
     },
     async (uri) => {

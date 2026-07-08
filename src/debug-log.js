@@ -9,7 +9,7 @@ function isTruthyEnv(value) {
 const ENABLED = isTruthyEnv(process.env.DEBUG);
 const BODY_ENABLED = isTruthyEnv(process.env.DEBUG_BODY);
 
-const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Chativist');
+const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'chatdump');
 let logPath = null;
 
 function ensureLogFile() {

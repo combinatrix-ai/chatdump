@@ -1,6 +1,6 @@
 # Release guide (macOS)
 
-This is the checklist for cutting a signed + notarized macOS build of Chativist
+This is the checklist for cutting a signed + notarized macOS build of chatdump
 and shipping it as a DMG.
 
 There are two ways to release:
@@ -20,7 +20,7 @@ staples, verifies, and uploads artifacts to a GitHub Release.
 ### One-time setup: GitHub secrets
 
 You need to register six repository secrets at
-`https://github.com/combinatrix-ai/chativist/settings/secrets/actions`.
+`https://github.com/combinatrix-ai/chatdump/settings/secrets/actions`.
 
 #### 1. `MACOS_CERTIFICATE` and `MACOS_CERTIFICATE_PASSWORD`
 
@@ -31,14 +31,14 @@ Export your `Developer ID Application` cert + private key as a `.p12`:
 3. Find `Developer ID Application: COMBINATRIX K.K. (3Y275A5TZ8)`.
 4. **Expand the disclosure triangle** so the private key under it is visible.
 5. Select **both** the certificate and its private key (cmd-click).
-6. Right-click → `Export 2 items…` → save as `chativist-cert.p12`.
+6. Right-click → `Export 2 items…` → save as `chatdump-cert.p12`.
 7. Set a password when prompted — this becomes `MACOS_CERTIFICATE_PASSWORD`.
 8. Convert to base64:
    ```sh
-   base64 -i chativist-cert.p12 | pbcopy
+   base64 -i chatdump-cert.p12 | pbcopy
    ```
 9. Paste into the `MACOS_CERTIFICATE` secret.
-10. **Delete `chativist-cert.p12` from disk** when you're done.
+10. **Delete `chatdump-cert.p12` from disk** when you're done.
 
 #### 2. `KEYCHAIN_PASSWORD`
 
@@ -60,7 +60,7 @@ Same values as your local `.env`:
 You can register them all in one go from the CLI:
 
 ```sh
-gh secret set MACOS_CERTIFICATE             < <(base64 -i chativist-cert.p12)
+gh secret set MACOS_CERTIFICATE             < <(base64 -i chatdump-cert.p12)
 gh secret set MACOS_CERTIFICATE_PASSWORD    # paste the .p12 password
 gh secret set KEYCHAIN_PASSWORD             # paste a random string
 gh secret set APPLE_ID                      # paste apple id email
@@ -78,7 +78,7 @@ git push origin main v1.0.1
 ```
 
 Watch the run at
-`https://github.com/combinatrix-ai/chativist/actions`. When green, the DMG
+`https://github.com/combinatrix-ai/chatdump/actions`. When green, the DMG
 and zip are attached to the auto-created Release.
 
 You can also trigger a build without tagging by using the "Run workflow"
@@ -121,14 +121,14 @@ without publishing.
    submits to Apple notarytool, and staples the ticket to the DMG.
 
    The signed artifacts land in `dist-electron/`:
-   - `Chativist-<version>-universal.dmg` (primary distributable)
-   - `Chativist-<version>-universal-mac.zip` (used for auto-update later)
+   - `chatdump-<version>-universal.dmg` (primary distributable)
+   - `chatdump-<version>-universal-mac.zip` (used for auto-update later)
 
 4. Verify the DMG passes Gatekeeper on a clean machine (or after clearing
    quarantine):
    ```sh
-   spctl -a -vv -t install dist-electron/Chativist-*.dmg
-   xcrun stapler validate dist-electron/Chativist-*.dmg
+   spctl -a -vv -t install dist-electron/chatdump-*.dmg
+   xcrun stapler validate dist-electron/chatdump-*.dmg
    ```
 
 5. Upload the DMG to GitHub Releases (or wherever you host downloads).

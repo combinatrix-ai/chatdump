@@ -6,7 +6,7 @@ const test = require('node:test');
 const { writeConversation } = require('../src/writer');
 
 test('writeConversation deletes stale duplicates by id suffix and preserves other files', () => {
-  const vaultPath = fs.mkdtempSync(path.join(os.tmpdir(), 'chativist-writer-'));
+  const vaultPath = fs.mkdtempSync(path.join(os.tmpdir(), 'chatdump-writer-'));
   const dir = path.join(vaultPath, 'chatgpt', 'account');
   const oldFilename = '2025-01-01_old_title_abcdef01.md';
   const newFilename = '2025-01-01_new_title_abcdef01.md';

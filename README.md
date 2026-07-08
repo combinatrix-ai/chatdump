@@ -1,14 +1,14 @@
-# Chativist
+# chatdump
 
-Chativist is a tray-only macOS app that archives your AI chat conversations
+chatdump is a tray-only macOS app that archives your AI chat conversations
 (Claude, ChatGPT, Gemini) into an Obsidian vault as Markdown. You log in to
-each provider once inside an embedded browser window; Chativist keeps the
+each provider once inside an embedded browser window; chatdump keeps the
 resulting session cookies locally and uses them to periodically pull your
 conversations from each provider's own web API, converting them to Markdown
 files in a vault folder you choose. There is no dock icon or main window —
 everything is driven from the menu bar.
 
-![Chativist menu](docs/images/menubar.png)
+![chatdump menu](docs/images/menubar.png)
 
 ## Features
 
@@ -26,7 +26,7 @@ everything is driven from the menu bar.
 - **Markdown + raw JSON cache output** — each conversation is written to
   `{vault}/{provider}/{account}/{date}_{title}_{id}.md` with YAML
   frontmatter, and the provider's raw API response is cached alongside it at
-  `{vault}/.chativist/cache/{provider}/{account}/{id}.json` (`{provider}` is
+  `{vault}/.chatdump/cache/{provider}/{account}/{id}.json` (`{provider}` is
   `claude`, `chatgpt`, or `gemini`).
 - **Menu bar controls** — per account: Sync Now / Stop Syncing, set a
   per-account vault or use the default, open the vault in Finder, toggle
@@ -36,28 +36,28 @@ everything is driven from the menu bar.
 ## Install
 
 Download the latest signed and notarized DMG from
-[GitHub Releases](https://github.com/combinatrix-ai/chativist/releases),
-open it, and drag Chativist to Applications.
+[GitHub Releases](https://github.com/combinatrix-ai/chatdump/releases),
+open it, and drag chatdump to Applications.
 
 To run from source instead:
 
 ```sh
-git clone https://github.com/combinatrix-ai/chativist.git
-cd chativist
+git clone https://github.com/combinatrix-ai/chatdump.git
+cd chatdump
 npm install
 npm start
 ```
 
 ## Getting started
 
-1. Click the Chativist icon in the menu bar and choose **Add Account...**,
+1. Click the chatdump icon in the menu bar and choose **Add Account...**,
    then pick a provider (Claude, ChatGPT, or Gemini).
 2. A login window opens for that provider. Sign in as usual; the window
-   closes itself once Chativist detects a valid session cookie.
+   closes itself once chatdump detects a valid session cookie.
 3. The account appears in the menu right away and a first sync starts
    automatically. To change where its Markdown files go, use **Set Vault
    Path...** on the account's submenu, or leave it on the default vault
-   (created at `~/chativist` the first time Chativist runs, or set your own
+   (created at `~/chatdump` the first time chatdump runs, or set your own
    via **Set Default Vault...**).
 4. Use **Sync Now** on an account, or **Sync All Now** at the bottom of the
    menu, to sync on demand. Auto-sync also runs in the background on the
@@ -70,7 +70,7 @@ configured accounts and login sessions as the tray app (it does not open
 login windows — re-login from the menu bar app if a session has expired):
 
 ```sh
-/Applications/Chativist.app/Contents/MacOS/Chativist cli <command> [options]
+/Applications/chatdump.app/Contents/MacOS/chatdump cli <command> [options]
 ```
 
 Commands:
@@ -86,9 +86,9 @@ Commands:
 Examples:
 
 ```sh
-/Applications/Chativist.app/Contents/MacOS/Chativist cli list
-/Applications/Chativist.app/Contents/MacOS/Chativist cli sync --all
-/Applications/Chativist.app/Contents/MacOS/Chativist cli sync \
+/Applications/chatdump.app/Contents/MacOS/chatdump cli list
+/Applications/chatdump.app/Contents/MacOS/chatdump cli sync --all
+/Applications/chatdump.app/Contents/MacOS/chatdump cli sync \
   --account openai:user@example.com --since-days 7
 ```
 
@@ -96,7 +96,7 @@ When running from source, use `npm run cli -- <command> [options]`.
 
 ## MCP Server
 
-Chativist can run as a stdio MCP server for local agents, reusing the app's
+chatdump can run as a stdio MCP server for local agents, reusing the app's
 configured accounts and persisted login sessions. It does not open provider
 login windows; re-login from the menu bar app if auth expired.
 
@@ -105,8 +105,8 @@ Project-scoped MCP client example, pointing at the packaged app:
 ```json
 {
   "mcpServers": {
-    "chativist": {
-      "command": "/Applications/Chativist.app/Contents/MacOS/Chativist",
+    "chatdump": {
+      "command": "/Applications/chatdump.app/Contents/MacOS/chatdump",
       "args": ["cli", "mcp"]
     }
   }
@@ -118,7 +118,7 @@ When running from source, use `npm run mcp` (equivalent to
 
 The server exposes four tools:
 
-- `ask` — ask a question through Chativist's persisted browser session. It
+- `ask` — ask a question through chatdump's persisted browser session. It
   currently supports ChatGPT accounts and returns `answer`, `conversationId`,
   `url`, `accountId`, and `provider`.
 - `conversation` — fetch a full conversation by provider conversation id. It
@@ -127,7 +127,7 @@ The server exposes four tools:
 - `accounts` — list configured accounts and sync status.
 - `sync` — sync selected accounts to their configured Obsidian vaults.
 
-It also exposes the `chativist://accounts` resource for configured accounts as
+It also exposes the `chatdump://accounts` resource for configured accounts as
 JSON.
 
 Typical MCP flow:
@@ -160,9 +160,9 @@ Then pass the returned `conversationId` to fetch the full transcript:
 - All data stays on your machine — Markdown files and the raw JSON cache are
   written only into the vault folder you choose.
 - "Logging in" stores your provider session cookies in an isolated Electron
-  session partition per account, on disk under Chativist's app data
-  directory. Chativist never sees or stores your password.
-- There is no Chativist backend or external server. Syncing works by calling
+  session partition per account, on disk under chatdump's app data
+  directory. chatdump never sees or stores your password.
+- There is no chatdump backend or external server. Syncing works by calling
   each provider's own internal web API (the same one their website uses)
   with your session cookie, on your behalf, to fetch your own conversations.
 

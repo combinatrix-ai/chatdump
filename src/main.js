@@ -31,14 +31,14 @@ if (isCliMode) {
 }
 const hasSingleInstanceLock = isCliMode ? true : app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
-  console.log('[main] Another Chativist instance is already running; exiting');
+  console.log('[main] Another chatdump instance is already running; exiting');
   app.quit();
 }
 
 function ensureDefaultVaultPath() {
   if (store.get('defaultVaultPath')) return;
   if (process.mas) return;
-  const fallback = path.join(os.homedir(), 'chativist');
+  const fallback = path.join(os.homedir(), 'chatdump');
   try {
     fs.mkdirSync(fallback, { recursive: true });
   } catch (e) {

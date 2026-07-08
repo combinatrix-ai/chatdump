@@ -4,9 +4,9 @@ const test = require('node:test');
 const { getCliArgs, parseArgs } = require('../src/cli');
 
 test('getCliArgs extracts args after cli marker', () => {
-  assert.deepEqual(getCliArgs(['/bin/chativist', 'cli', 'sync', '--all']), ['sync', '--all']);
-  assert.deepEqual(getCliArgs(['/bin/chativist', '--cli', 'list']), ['list']);
-  assert.equal(getCliArgs(['/bin/chativist', 'sync']), null);
+  assert.deepEqual(getCliArgs(['/bin/chatdump', 'cli', 'sync', '--all']), ['sync', '--all']);
+  assert.deepEqual(getCliArgs(['/bin/chatdump', '--cli', 'list']), ['list']);
+  assert.equal(getCliArgs(['/bin/chatdump', 'sync']), null);
 });
 
 test('parseArgs parses sync selectors and options', () => {

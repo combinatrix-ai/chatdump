@@ -226,7 +226,10 @@ test('handleMcpSync streams progress then a synced data payload', async () => {
   const exitCode = await handleMcpSync({}, send, { store, scheduler, providers });
 
   assert.equal(exitCode, 0);
-  assert.equal(sent.some((m) => m.type === 'progress'), true);
+  assert.equal(
+    sent.some((m) => m.type === 'progress'),
+    true,
+  );
   const data = sent.find((m) => m.type === 'data');
   assert.equal(data.payload.ok, true);
   assert.equal(data.payload.synced[0].id, 'openai:a@example.com');

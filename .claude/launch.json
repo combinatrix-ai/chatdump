@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "icon-preview",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["http-server", "assets", "-p", "8090", "-c-1"],
-      "port": 8090
+      "name": "site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "3999", "-d", "site"],
+      "port": 3999
     }
   ]
 }

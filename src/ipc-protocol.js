@@ -12,6 +12,7 @@
 // Server -> client (all carry the same `id` as the request they answer)
 //   { type: 'stdout', id, text }                          -- one line/blob of command output
 //   { type: 'progress', id, state, message, accountId }    -- sync status update
+//   { type: 'data', id, payload }                          -- structured JSON result (e.g. mcp.* commands)
 //   { type: 'result', id, exitCode }                       -- stream done, success
 //   { type: 'error', id, message, exitCode }                -- stream done, failure
 

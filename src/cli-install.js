@@ -3,12 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const CLI_NAME = 'chatdump';
-// Preferred writable locations, checked in order. Homebrew's bin dir is
-// user-writable on Apple Silicon by default; /usr/local/bin is the Intel
-// default and is often root-owned, in which case we fall back to escalation.
-const CANDIDATE_DIRS = ['/opt/homebrew/bin', '/usr/local/bin'];
-// Target used when escalating via administrator privileges (neither
-// candidate dir above is writable by the current user).
+// The one standard place for a non-Homebrew user CLI on macOS. If it happens
+// to be user-writable (common when Homebrew owns it on Intel) we symlink
+// without escalation; otherwise we fall back to an administrator prompt.
+const CANDIDATE_DIRS = ['/usr/local/bin'];
+// Target used when escalating via administrator privileges (the candidate dir
+// above is not writable by the current user).
 const ESCALATION_DIR = '/usr/local/bin';
 
 function isCliInstallAvailable() {

@@ -1,6 +1,7 @@
 require('./request.test');
 require('./ask.test');
 require('./cli.test');
+require('./cli-install.test');
 require('./conversation.test');
 require('./mcp.test');
 require('./openai.test');

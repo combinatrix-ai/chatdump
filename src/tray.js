@@ -19,6 +19,7 @@ const {
 const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
+const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -544,6 +545,37 @@ function buildMenu() {
     label: 'Add Account...',
     submenu: addAccountSubmenu,
   });
+
+  if (isCliInstallAvailable()) {
+    template.push({ type: 'separator' });
+    const cliStatus = getCliInstallStatus();
+    if (cliStatus.installed) {
+      template.push({ label: `CLI: ${shortenPath(cliStatus.path)}`, enabled: false });
+    } else {
+      template.push({
+        label: 'Install Command Line Tool…',
+        click: async () => {
+          const result = await installCliTool();
+          if (result.ok) {
+            await dialog.showMessageBox({
+              type: 'info',
+              title: 'chatdump command installed',
+              message: 'chatdump command installed',
+              detail: `chatdump command installed at ${result.path}. Try: chatdump cli list`,
+            });
+          } else if (result.reason !== 'cancelled') {
+            await dialog.showMessageBox({
+              type: 'error',
+              title: 'Could not install chatdump command',
+              message: 'Could not install chatdump command',
+              detail: result.message || 'Unknown error',
+            });
+          }
+          buildMenu();
+        },
+      });
+    }
+  }
 
   template.push({ type: 'separator' });
   template.push({

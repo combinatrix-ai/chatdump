@@ -67,7 +67,17 @@ npm start
 
 The packaged app can also run as a command-line tool, using the same
 configured accounts and login sessions as the tray app (it does not open
-login windows — re-login from the menu bar app if a session has expired):
+login windows — re-login from the menu bar app if a session has expired).
+
+chatdump offers to install a `chatdump` command onto your PATH the first
+time you launch it, and you can trigger the same install any time from the
+menu bar (**Install Command Line Tool…**). Once installed, `chatdump cli
+<command>` works directly from any terminal, and MCP clients can be
+configured with `"command": "chatdump", "args": ["cli", "mcp"]` instead of
+the full app path. This is unavailable in the Mac App Store build.
+
+If you'd rather not install it (or are on the Mac App Store build), call
+the binary inside the app bundle directly:
 
 ```sh
 /Applications/chatdump.app/Contents/MacOS/chatdump cli <command> [options]

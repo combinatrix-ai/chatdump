@@ -1,0 +1,27 @@
+#!/bin/sh
+# CLI wrapper installed on PATH (e.g. /usr/local/bin/chatdump) as a symlink to
+# this file. Resolves its own real location -- following symlinks with a
+# portable loop, since `readlink -f` is not available on every macOS /bin/sh
+# -- and execs the packaged Electron binary alongside it.
+#
+# This script ships at Contents/Resources/bin/chatdump inside the app
+# bundle, so the Electron binary sits two directories up and over at
+# Contents/MacOS/chatdump.
+#
+# A wrapper (rather than symlinking straight to the Electron binary) avoids
+# confusing Electron's framework/resource path resolution, which keys off
+# the real path of the running binary -- the same approach VS Code's `code`
+# CLI uses.
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  LINK="$(readlink "$SOURCE")"
+  case "$LINK" in
+    /*) SOURCE="$LINK" ;;
+    *) SOURCE="$DIR/$LINK" ;;
+  esac
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+exec "$DIR/../../MacOS/chatdump" "$@"

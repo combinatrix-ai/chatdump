@@ -46,6 +46,12 @@
       "assets/providers/*.png",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build/bin",
+        "to": "bin"
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",

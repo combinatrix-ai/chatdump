@@ -8,7 +8,7 @@ process.stderr.on('error', (e) => {
   if (e.code !== 'EPIPE') throw e;
 });
 
-const { app, session } = require('electron');
+const { app, dialog, session } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -23,6 +23,7 @@ const { store, getAccounts } = require('./store');
 const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
 const { getCliArgs, runCli, _test: cliTest } = require('./cli');
+const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 
 const cliArgs = getCliArgs();
 const isCliMode = cliArgs !== null;
@@ -134,6 +135,45 @@ async function cleanupOrphanPartitions() {
   }
 }
 
+// Offer to install the `chatdump` command line tool once, the first time the
+// GUI app runs after it becomes available (packaged, non-MAS builds).
+async function maybePromptCliInstall(buildMenu) {
+  if (!isCliInstallAvailable()) return;
+  if (store.get('cliInstallPrompted')) return;
+  store.set('cliInstallPrompted', true);
+
+  if (getCliInstallStatus().installed) return;
+
+  const { response } = await dialog.showMessageBox({
+    type: 'info',
+    buttons: ['Install', 'Not Now'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Install command line tool?',
+    message: 'Install the chatdump command line tool?',
+    detail: 'Enables chatdump cli and the MCP server from your terminal.',
+  });
+  if (response !== 0) return;
+
+  const result = await installCliTool();
+  if (result.ok) {
+    await dialog.showMessageBox({
+      type: 'info',
+      title: 'chatdump command installed',
+      message: 'chatdump command installed',
+      detail: `chatdump command installed at ${result.path}. Try: chatdump cli list`,
+    });
+  } else if (result.reason !== 'cancelled') {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Could not install chatdump command',
+      message: 'Could not install chatdump command',
+      detail: result.message || 'Unknown error',
+    });
+  }
+  buildMenu?.();
+}
+
 if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     if (isCliMode) {
@@ -165,6 +205,11 @@ if (hasSingleInstanceLock) {
     } else {
       onStatus('idle', 'Add an account to start');
     }
+
+    // Non-blocking: don't hold up scheduler/tray startup on this dialog.
+    maybePromptCliInstall(buildMenu).catch((e) => {
+      console.error(`[main] CLI install prompt failed: ${e.message}`);
+    });
   });
 
   app.on('window-all-closed', () => {

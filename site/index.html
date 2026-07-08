@@ -487,13 +487,6 @@
   .file-body .str { color: #a9cf9f; }
   .file-body .hd { color: #dfba76; font-weight: 600; }
 
-  .vault-tree {
-    max-width: 46rem;
-    margin: clamp(2.2rem, 5vw, 3.2rem) auto 0;
-  }
-  .vault-tree .code-block { line-height: 1.8; }
-  .vault-tree .hd { color: #dfba76; font-weight: 600; }
-
   /* ---------- Sidebar → vault overview ---------- */
 
   .sync-overview { padding: clamp(2.5rem, 6vw, 4.5rem) 0; }
@@ -933,20 +926,6 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
         </div>
       </div>
       <p class="screenshot-caption">The frontmatter keeps the title, timestamps, model, source, and conversation id — the rest is just the conversation.</p>
-
-      <div class="vault-tree">
-        <p class="code-title">Where it lands in your vault</p>
-        <pre class="code-block"><span class="hd">Vault/</span>
-<span class="muted">├──</span> <span class="accent">chatgpt/alex@example.com/</span>
-<span class="muted">│   ├──</span> 2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md
-<span class="muted">│   └──</span> 2026-07-04_Regex_lookbehind_help_c41b9e02.md
-<span class="muted">├──</span> <span class="accent">claude/alex@example.com/</span>
-<span class="muted">│   └──</span> 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
-<span class="muted">├──</span> <span class="accent">gemini/alex@example.com/</span>
-<span class="muted">│   └──</span> 2026-07-01_Trip_photo_captions_3b8cf104.md
-<span class="muted">└── .chatdump/cache/…</span></pre>
-        <p class="screenshot-caption">One folder per provider, one per account. Raw provider JSON is cached under <code>.chatdump/</code> alongside the notes.</p>
-      </div>
     </div>
   </section>
 

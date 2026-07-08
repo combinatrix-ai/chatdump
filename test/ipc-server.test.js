@@ -2,7 +2,18 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
-  _test: { accountSummary, selectAccounts, handleList, handleSync, dispatch },
+  _test: {
+    accountSummary,
+    selectAccounts,
+    handleList,
+    handleSync,
+    handleMcpAccounts,
+    handleMcpAsk,
+    handleMcpConversation,
+    handleMcpSync,
+    validateMcpSyncInput,
+    dispatch,
+  },
 } = require('../src/ipc-server');
 
 function makeStore(accounts) {
@@ -138,4 +149,130 @@ test('dispatch routes list/accounts/sync and rejects unknown commands', async ()
     () => dispatch({ cmd: 'bogus', args: {} }, send, deps),
     /Unsupported command/,
   );
+});
+
+test('handleMcpAccounts sends a structured data payload of summaries', async () => {
+  const accounts = [
+    { id: 'openai:a@example.com', provider: 'openai', autoSync: true },
+    { id: 'claude:b@example.com', provider: 'claude', autoSync: false },
+  ];
+  const { sent, send } = collector();
+
+  const exitCode = await handleMcpAccounts({ includeDisabled: true }, send, {
+    store: makeStore(accounts),
+    providers,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'data');
+  assert.deepEqual(
+    sent[0].payload.accounts.map((a) => a.id),
+    ['openai:a@example.com', 'claude:b@example.com'],
+  );
+});
+
+test('handleMcpAsk delegates to ask.askQuestion and returns its result as data', async () => {
+  const { sent, send } = collector();
+  const ask = {
+    askQuestion: async (input) => ({
+      accountId: 'openai:a@example.com',
+      provider: 'openai',
+      answer: `echo:${input.prompt}`,
+      url: '',
+      conversationId: 'c1',
+    }),
+  };
+
+  const exitCode = await handleMcpAsk({ prompt: 'hi' }, send, { ask });
+
+  assert.equal(exitCode, 0);
+  assert.equal(sent[0].type, 'data');
+  assert.equal(sent[0].payload.answer, 'echo:hi');
+});
+
+test('handleMcpConversation omits raw unless includeRaw is set', async () => {
+  const conversation = {
+    getConversation: async () => ({
+      accountId: 'openai:a@example.com',
+      provider: 'openai',
+      conversationId: 'c1',
+      title: 'T',
+      markdown: '# T',
+      raw: { big: true },
+    }),
+  };
+
+  const noRaw = collector();
+  await handleMcpConversation({ conversationId: 'c1' }, noRaw.send, { conversation });
+  assert.equal(noRaw.sent[0].payload.raw, undefined);
+  assert.equal(noRaw.sent[0].payload.markdown, '# T');
+
+  const withRaw = collector();
+  await handleMcpConversation({ conversationId: 'c1', includeRaw: true }, withRaw.send, {
+    conversation,
+  });
+  assert.deepEqual(withRaw.sent[0].payload.raw, { big: true });
+});
+
+test('handleMcpSync streams progress then a synced data payload', async () => {
+  const accounts = [{ id: 'openai:a@example.com', provider: 'openai', autoSync: true }];
+  const store = makeStore(accounts);
+  const scheduler = {
+    syncAccount: async (id, onStatus) => onStatus('syncing', 'Fetching...', id),
+  };
+  const { sent, send } = collector();
+
+  const exitCode = await handleMcpSync({}, send, { store, scheduler, providers });
+
+  assert.equal(exitCode, 0);
+  assert.equal(sent.some((m) => m.type === 'progress'), true);
+  const data = sent.find((m) => m.type === 'data');
+  assert.equal(data.payload.ok, true);
+  assert.equal(data.payload.synced[0].id, 'openai:a@example.com');
+});
+
+test('handleMcpSync dryRun returns accounts without syncing', async () => {
+  const accounts = [{ id: 'openai:a@example.com', provider: 'openai', autoSync: true }];
+  let synced = false;
+  const scheduler = {
+    syncAccount: async () => {
+      synced = true;
+    },
+  };
+  const { sent, send } = collector();
+
+  await handleMcpSync({ dryRun: true }, send, { store: makeStore(accounts), scheduler, providers });
+
+  assert.equal(synced, false);
+  const data = sent.find((m) => m.type === 'data');
+  assert.equal(data.payload.dryRun, true);
+});
+
+test('validateMcpSyncInput rejects sinceDays combined with fullSync', () => {
+  assert.throws(
+    () => validateMcpSyncInput({ sinceDays: 7, fullSync: 'created_at' }),
+    /cannot be used together/,
+  );
+  assert.doesNotThrow(() => validateMcpSyncInput({ sinceDays: 7 }));
+});
+
+test('dispatch routes mcp.* commands', async () => {
+  const accounts = [{ id: 'openai:a@example.com', provider: 'openai', autoSync: true }];
+  const deps = {
+    store: makeStore(accounts),
+    scheduler: { syncAccount: async (id, onStatus) => onStatus('idle', 'done', id) },
+    providers,
+    ask: { askQuestion: async () => ({ answer: 'a' }) },
+    conversation: { getConversation: async () => ({ markdown: 'm' }) },
+  };
+  const { send } = collector();
+
+  assert.equal(await dispatch({ cmd: 'mcp.accounts', args: {} }, send, deps), 0);
+  assert.equal(await dispatch({ cmd: 'mcp.ask', args: { prompt: 'x' } }, send, deps), 0);
+  assert.equal(
+    await dispatch({ cmd: 'mcp.conversation', args: { conversationId: 'c1' } }, send, deps),
+    0,
+  );
+  assert.equal(await dispatch({ cmd: 'mcp.sync', args: {} }, send, deps), 0);
 });

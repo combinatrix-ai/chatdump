@@ -1,7 +1,11 @@
 // Runs inside the GUI Electron process only. Listens on a Unix domain
-// socket and does the real work (reading accounts, running syncs) for the
-// thin CLI client (see ipc-client.js), which runs as a separate pure-node
-// process and never touches store/scheduler/electron directly.
+// socket and does the real work (reading accounts, running syncs, asking
+// questions, fetching conversations) for the thin CLI and MCP clients (see
+// ipc-client.js, cli-entry.js, mcp.js), which run as separate pure-node
+// processes and never touch store/scheduler/ask/conversation/electron
+// directly. `list`/`accounts`/`sync` back the CLI (stdout/progress
+// messages); the `mcp.*` commands back the MCP stdio server (structured
+// `data` messages instead of stdout text).
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
@@ -164,6 +168,105 @@ function defaultDeps() {
   };
 }
 
+// mcp.* inputs treat `all` as a synonym for includeDisabled (mirroring the
+// old src/mcp.js selectAccounts, which checked `input.all || input.includeDisabled`).
+// The CLI doesn't need this fold: cli.js's --all flag already sets
+// includeDisabled itself, so this is a no-op for `list`/`sync` requests.
+function withMcpIncludeDisabled(args) {
+  return { ...args, includeDisabled: Boolean(args.includeDisabled || args.all) };
+}
+
+async function handleMcpAccounts(args, send, { store, providers }) {
+  const accounts = selectAccounts(withMcpIncludeDisabled(args), store, providers).map((account) =>
+    accountSummary(account, store),
+  );
+  send({ type: 'data', payload: { accounts } });
+  return 0;
+}
+
+async function handleMcpAsk(args, send, deps) {
+  const ask = deps.ask || require('./ask');
+  const result = await ask.askQuestion(args);
+  send({ type: 'data', payload: result });
+  return 0;
+}
+
+async function handleMcpConversation(args, send, deps) {
+  const conversation = deps.conversation || require('./conversation');
+  const result = await conversation.getConversation(args);
+  const response = {
+    accountId: result.accountId,
+    provider: result.provider,
+    conversationId: result.conversationId,
+    title: result.title,
+    markdown: result.markdown,
+  };
+  if (args.includeRaw) response.raw = result.raw;
+  send({ type: 'data', payload: response });
+  return 0;
+}
+
+function validateMcpSyncInput(args) {
+  if (args.sinceDays !== undefined && args.fullSync) {
+    throw new Error('sinceDays and fullSync cannot be used together');
+  }
+}
+
+async function handleMcpSync(args, send, { store, scheduler, providers }) {
+  validateMcpSyncInput(args);
+  const accounts = selectAccounts(withMcpIncludeDisabled(args), store, providers);
+  const mode = args.fullSync ? `full-sync:${args.fullSync}` : undefined;
+
+  if (args.dryRun) {
+    send({
+      type: 'data',
+      payload: {
+        dryRun: true,
+        accounts: accounts.map((account) => accountSummary(account, store)),
+        options: { sinceDays: args.sinceDays, mode },
+      },
+    });
+    return 0;
+  }
+
+  const results = [];
+  for (const account of accounts) {
+    const messages = [];
+    send({ type: 'progress', state: 'start', message: 'sync started', accountId: account.id });
+
+    await scheduler.syncAccount(
+      account.id,
+      (state, message) => {
+        const entry = { state, message: message || '' };
+        messages.push(entry);
+        send({ type: 'progress', state, message: entry.message, accountId: account.id });
+      },
+      {
+        interactive: false,
+        sinceDays: args.sinceDays,
+        mode,
+      },
+    );
+
+    const updated = store.getAccount(account.id) || account;
+    results.push({
+      id: account.id,
+      provider: account.provider,
+      ok: !(updated.lastError || updated.status === 'expired'),
+      status: updated.status || 'ok',
+      lastError: updated.lastError || '',
+      lastSyncedAt: updated.lastSyncedAt || '',
+      messages,
+    });
+  }
+
+  send({
+    type: 'data',
+    payload: { synced: results, ok: results.every((result) => result.ok) },
+  });
+  return 0;
+}
+
 // Dispatch a decoded `request` message, invoking `send(partial)` zero or
 // more times (each call is stamped with the request's `id` by the caller)
 // and resolving with the exit code once the command is done.
@@ -174,6 +277,18 @@ async function dispatch(request, send, deps = defaultDeps()) {
   }
   if (cmd === 'sync') {
     return handleSync(args, send, deps);
+  }
+  if (cmd === 'mcp.accounts') {
+    return handleMcpAccounts(args, send, deps);
+  }
+  if (cmd === 'mcp.ask') {
+    return handleMcpAsk(args, send, deps);
+  }
+  if (cmd === 'mcp.conversation') {
+    return handleMcpConversation(args, send, deps);
+  }
+  if (cmd === 'mcp.sync') {
+    return handleMcpSync(args, send, deps);
   }
   throw new Error(`Unsupported command: ${cmd}`);
 }
@@ -262,6 +377,11 @@ module.exports = {
     formatAccountBlock,
     handleList,
     handleSync,
+    handleMcpAccounts,
+    handleMcpAsk,
+    handleMcpConversation,
+    handleMcpSync,
+    validateMcpSyncInput,
     dispatch,
   },
 };

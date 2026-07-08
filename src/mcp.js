@@ -1,48 +1,12 @@
+// Pure-node thin MCP stdio server. Runs under ELECTRON_RUN_AS_NODE (same as
+// src/cli-entry.js), so this module MUST NOT require('electron') or any
+// electron-only module (store/ask/conversation/scheduler/providers). Every
+// tool delegates to the running GUI over the IPC socket (see
+// src/ipc-client.js / src/ipc-server.js) -- the GUI is the only process that
+// touches the Chromium session/cookies, so there is only ever one Electron
+// process, matching the CLI's list/sync delegation.
 const packageJson = require('../package.json');
-
-function accountSummary(account, store) {
-  return {
-    id: account.id,
-    provider: account.provider,
-    email: account.email || '',
-    name: account.name || '',
-    autoSync: account.autoSync !== false,
-    status: account.status || 'ok',
-    lastError: account.lastError || '',
-    lastSyncedAt: account.lastSyncedAt || '',
-    vaultPath: store.getVaultPath(account.id) || '',
-  };
-}
-
-function selectAccounts(input, store, providers) {
-  const allAccounts = store.getAccounts();
-  const providerNames = providers.allProviders().map((provider) => provider.name);
-
-  if (input.provider && !providers.getProvider(input.provider)) {
-    throw new Error(
-      `Unknown provider: ${input.provider}. Available providers: ${providerNames.join(', ')}`,
-    );
-  }
-
-  if (input.accountIds?.length) {
-    return input.accountIds.map((id) => {
-      const account = store.getAccount(id);
-      if (!account) throw new Error(`Account not found: ${id}`);
-      return account;
-    });
-  }
-
-  let selected = allAccounts;
-  if (input.provider) {
-    selected = selected.filter((account) => account.provider === input.provider);
-  }
-
-  if (!(input.all || input.includeDisabled)) {
-    selected = selected.filter((account) => account.autoSync !== false);
-  }
-
-  return selected;
-}
+const { requestData, requestStream } = require('./ipc-client');
 
 function makeToolResponse(data) {
   return {
@@ -56,6 +20,10 @@ function makeToolResponse(data) {
   };
 }
 
+// Fail fast on an obviously invalid sync input without a round-trip to (and
+// possible launch of) the GUI. The GUI's ipc-server also validates this
+// (see handleMcpSync/validateMcpSyncInput in src/ipc-server.js) so this is a
+// convenience, not the source of truth.
 function validateSyncInput(input) {
   if (input.sinceDays !== undefined && input.fullSync) {
     throw new Error('sinceDays and fullSync cannot be used together');
@@ -68,13 +36,6 @@ async function startMcpServer() {
     import('@modelcontextprotocol/sdk/server/stdio.js'),
     import('zod'),
   ]);
-
-  const store = require('./store');
-  const { getAccounts } = store;
-  const { askQuestion } = require('./ask');
-  const { getConversation } = require('./conversation');
-  const scheduler = require('./scheduler');
-  const providers = require('./providers');
 
   const server = new McpServer(
     {
@@ -114,7 +75,7 @@ async function startMcpServer() {
         },
       });
 
-      const result = await askQuestion(input);
+      const result = await requestData('mcp.ask', input);
 
       await server.sendLoggingMessage({
         level: 'info',
@@ -146,17 +107,8 @@ async function startMcpServer() {
       },
     },
     async (input) => {
-      const result = await getConversation(input);
-      const response = {
-        accountId: result.accountId,
-        provider: result.provider,
-        conversationId: result.conversationId,
-        title: result.title,
-        markdown: result.markdown,
-        raw: input.includeRaw ? result.raw : undefined,
-      };
-      if (!input.includeRaw) delete response.raw;
-      return makeToolResponse(response);
+      const result = await requestData('mcp.conversation', input);
+      return makeToolResponse(result);
     },
   );
 
@@ -171,10 +123,8 @@ async function startMcpServer() {
       },
     },
     async (input) => {
-      const selected = selectAccounts(input, store, providers).map((account) =>
-        accountSummary(account, store),
-      );
-      return makeToolResponse({ accounts: selected });
+      const result = await requestData('mcp.accounts', input);
+      return makeToolResponse(result);
     },
   );
 
@@ -196,65 +146,22 @@ async function startMcpServer() {
     },
     async (input) => {
       validateSyncInput(input);
-      const accounts = selectAccounts(input, store, providers);
-      const mode = input.fullSync ? `full-sync:${input.fullSync}` : undefined;
 
-      if (input.dryRun) {
-        return makeToolResponse({
-          dryRun: true,
-          accounts: accounts.map((account) => accountSummary(account, store)),
-          options: {
-            sinceDays: input.sinceDays,
-            mode,
-          },
-        });
-      }
-
-      const results = [];
-      for (const account of accounts) {
-        const messages = [];
-        await server.sendLoggingMessage({
-          level: 'info',
-          logger: 'chatdump',
-          data: { accountId: account.id, message: 'sync started' },
-        });
-
-        await scheduler.syncAccount(
-          account.id,
-          (state, message) => {
-            const entry = { state, message: message || '' };
-            messages.push(entry);
-            server
-              .sendLoggingMessage({
-                level: state === 'error' ? 'error' : 'info',
-                logger: 'chatdump',
-                data: { accountId: account.id, ...entry },
-              })
-              .catch(() => {});
-          },
-          {
-            interactive: false,
-            sinceDays: input.sinceDays,
-            mode,
-          },
-        );
-
-        const updated = store.getAccount(account.id) || account;
-        results.push({
-          id: account.id,
-          provider: account.provider,
-          ok: !(updated.lastError || updated.status === 'expired'),
-          status: updated.status || 'ok',
-          lastError: updated.lastError || '',
-          lastSyncedAt: updated.lastSyncedAt || '',
-          messages,
-        });
-      }
-
-      return makeToolResponse({
-        synced: results,
-        ok: results.every((result) => result.ok),
+      const result = await requestStream('mcp.sync', input, (progress) => {
+        server
+          .sendLoggingMessage({
+            level: progress.state === 'error' ? 'error' : 'info',
+            logger: 'chatdump',
+            data: {
+              accountId: progress.accountId,
+              state: progress.state,
+              message: progress.message,
+            },
+          })
+          .catch(() => {});
       });
+
+      return makeToolResponse(result);
     },
   );
 
@@ -267,13 +174,13 @@ async function startMcpServer() {
       mimeType: 'application/json',
     },
     async (uri) => {
-      const accounts = getAccounts().map((account) => accountSummary(account, store));
+      const result = await requestData('mcp.accounts', {});
       return {
         contents: [
           {
             uri: uri.href,
             mimeType: 'application/json',
-            text: JSON.stringify({ accounts }, null, 2),
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
@@ -295,8 +202,6 @@ async function startMcpServer() {
 module.exports = {
   startMcpServer,
   _test: {
-    accountSummary,
-    selectAccounts,
     validateSyncInput,
   },
 };

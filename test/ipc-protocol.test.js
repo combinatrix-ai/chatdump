@@ -32,6 +32,19 @@ test('createLineDecoder handles a line split across two chunks', () => {
   assert.deepEqual(messages, [{ type: 'stdout', id: '1', text: 'hello world' }]);
 });
 
+test('encode/decode round-trips a data message with a structured payload', () => {
+  const messages = [];
+  const decoder = createLineDecoder((msg) => messages.push(msg));
+
+  decoder.push(
+    encode({ type: 'data', id: '1', payload: { accounts: [{ id: 'openai:a@example.com' }] } }),
+  );
+
+  assert.deepEqual(messages, [
+    { type: 'data', id: '1', payload: { accounts: [{ id: 'openai:a@example.com' }] } },
+  ]);
+});
+
 test('createLineDecoder decodes multiple messages delivered in one chunk, including a trailing partial line', () => {
   const messages = [];
   const decoder = createLineDecoder((msg) => messages.push(msg));

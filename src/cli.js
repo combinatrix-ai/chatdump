@@ -1,16 +1,10 @@
-// Pure argument parsing for the chatdump CLI -- no electron, no store,
-// no scheduler. Required both by src/cli-entry.js (a pure-node process
-// launched via ELECTRON_RUN_AS_NODE, which must not touch electron APIs)
-// and, historically, by the GUI process. The actual work for `list`/`sync`
-// now lives in src/ipc-server.js, which runs inside the GUI Electron
-// process and is reached over the IPC socket (see src/ipc-client.js).
+// Pure argument parsing for the chatdump CLI -- no electron, no store, no
+// scheduler. Required by src/cli-entry.js, a pure-node process launched via
+// ELECTRON_RUN_AS_NODE, which must not touch electron APIs. The actual work
+// for `list`/`sync`/`accounts`/`mcp.*` lives in src/ipc-server.js, which runs
+// inside the GUI Electron process and is reached over the IPC socket (see
+// src/ipc-client.js).
 const COMMANDS = new Set(['help', 'list', 'accounts', 'sync', 'mcp']);
-
-function getCliArgs(argv = process.argv) {
-  const markerIndex = argv.findIndex((arg) => arg === 'cli' || arg === '--cli');
-  if (markerIndex >= 0) return argv.slice(markerIndex + 1);
-  return null;
-}
 
 function printHelp(stream = process.stdout) {
   stream.write(`chatdump CLI
@@ -115,7 +109,6 @@ function parseFullSyncMode(value) {
 }
 
 module.exports = {
-  getCliArgs,
   parseArgs,
   printHelp,
   CliUsageError,

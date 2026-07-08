@@ -1,8 +1,13 @@
-// Pure-node thin client for the chatdump CLI. Runs under
-// ELECTRON_RUN_AS_NODE (see build/bin/chatdump / src/cli-entry.js) where
-// require('electron') returns a stub path string rather than the API, so
-// this module MUST NOT depend on any electron API -- socket path, app
+// Pure-node thin client for the chatdump CLI and MCP server. Runs under
+// ELECTRON_RUN_AS_NODE (see build/bin/chatdump / src/cli-entry.js / src/mcp.js)
+// where require('electron') returns a stub path string rather than the API,
+// so this module MUST NOT depend on any electron API -- socket path, app
 // launch and everything else here is plain Node.
+//
+// runViaDelegation() streams CLI stdout/progress text to the terminal.
+// requestData()/requestStream() instead resolve with a structured `data`
+// payload (see ipc-protocol.js) for the MCP thin client, which needs JSON
+// results rather than printed text.
 const { execFile } = require('node:child_process');
 const net = require('node:net');
 const os = require('node:os');
@@ -36,6 +41,10 @@ function connectOnce(socketPath) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function newRequestId() {
+  return `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 // Derive the .app bundle path from this process's executable. Under
@@ -100,7 +109,7 @@ async function runViaDelegation(
   { stdout = process.stdout, stderr = process.stderr } = {},
 ) {
   const socketPath = getSocketPath();
-  const id = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const id = newRequestId();
 
   let socket;
   try {
@@ -152,8 +161,68 @@ async function runViaDelegation(
   });
 }
 
+// Send `cmd`/`args` to the running GUI and collect its response, calling
+// `onProgress({state,message,accountId})` for each `progress` message along
+// the way (used by streaming commands like mcp.sync). Resolves with the
+// `data` message's payload once the command completes; rejects on `error`
+// or a connection failure.
+async function sendAndCollect(cmd, args, onProgress) {
+  const socketPath = getSocketPath();
+  const id = newRequestId();
+  const socket = await connectWithLaunch(socketPath);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let payload;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      fn(value);
+    };
+
+    const decoder = createLineDecoder((msg) => {
+      if (msg.id !== id) return;
+      if (msg.type === 'data') {
+        payload = msg.payload;
+      } else if (msg.type === 'progress') {
+        onProgress?.({ state: msg.state, message: msg.message, accountId: msg.accountId });
+      } else if (msg.type === 'result') {
+        finish(resolve, payload);
+      } else if (msg.type === 'error') {
+        finish(reject, new Error(msg.message));
+      }
+    });
+
+    socket.on('data', (chunk) => decoder.push(chunk.toString('utf8')));
+    socket.on('error', (e) => {
+      finish(reject, new Error(`Connection to chatdump failed: ${e.message}`));
+    });
+    socket.on('close', () => {
+      if (!settled) finish(reject, new Error('Connection to chatdump closed unexpectedly.'));
+    });
+
+    socket.write(encode({ type: 'request', id, cmd, args }));
+  });
+}
+
+// Send `cmd`/`args` to the running GUI (launching it if needed) and resolve
+// with the `data` message's payload. Used by the MCP thin client for
+// non-streaming tools (ask/conversation/accounts).
+async function requestData(cmd, args) {
+  return sendAndCollect(cmd, args);
+}
+
+// Like requestData, but also streams `progress` messages to `onProgress` as
+// they arrive. Used by the MCP thin client for `mcp.sync`.
+async function requestStream(cmd, args, onProgress) {
+  return sendAndCollect(cmd, args, onProgress);
+}
+
 module.exports = {
   runViaDelegation,
+  requestData,
+  requestStream,
   _test: {
     getSocketPath,
     isGuiNotRunning,

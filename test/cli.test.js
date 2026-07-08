@@ -1,13 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { getCliArgs, parseArgs } = require('../src/cli');
-
-test('getCliArgs extracts args after cli marker', () => {
-  assert.deepEqual(getCliArgs(['/bin/chatdump', 'cli', 'sync', '--all']), ['sync', '--all']);
-  assert.deepEqual(getCliArgs(['/bin/chatdump', '--cli', 'list']), ['list']);
-  assert.equal(getCliArgs(['/bin/chatdump', 'sync']), null);
-});
+const { parseArgs } = require('../src/cli');
 
 test('parseArgs parses sync selectors and options', () => {
   const options = parseArgs([

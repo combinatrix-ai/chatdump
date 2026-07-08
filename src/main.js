@@ -24,6 +24,7 @@ const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 const { startIpcServer, stopIpcServer } = require('./ipc-server');
+const { initUpdater, stopUpdater } = require('./updater');
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -178,6 +179,7 @@ if (hasSingleInstanceLock) {
     const { onStatus, buildMenu } = createTray();
     setMenuRefreshCallback(buildMenu);
     startIpcServer();
+    initUpdater(buildMenu);
 
     if (getAccounts().length > 0) {
       startScheduler(onStatus);
@@ -199,5 +201,6 @@ if (hasSingleInstanceLock) {
     stopIpcServer();
     stopAllSyncs();
     stopScheduler();
+    stopUpdater();
   });
 }

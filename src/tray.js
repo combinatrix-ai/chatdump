@@ -20,6 +20,7 @@ const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
+const { getUpdateState, checkForUpdates, quitAndInstall } = require('./updater');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -578,6 +579,9 @@ function buildMenu() {
   }
 
   template.push({ type: 'separator' });
+  template.push(buildUpdateItem());
+
+  template.push({ type: 'separator' });
   template.push({
     label: 'Quit',
     click: () => {
@@ -595,6 +599,27 @@ function buildMenu() {
 function onStatus(_state, _message, _accountId) {
   // Status now derived from scheduler state + per-account fields; just trigger a refresh.
   buildMenu();
+}
+
+function buildUpdateItem() {
+  const update = getUpdateState();
+
+  if (update.status === 'downloaded') {
+    const v = update.version ? ` (v${update.version})` : '';
+    return { label: `🔄 Restart to Update${v}`, click: () => quitAndInstall() };
+  }
+  if (update.status === 'downloading') {
+    const pct = update.percent ? ` ${update.percent}%` : '';
+    return { label: `Downloading update…${pct}`, enabled: false };
+  }
+  if (update.status === 'checking') {
+    return { label: 'Checking for Updates…', enabled: false };
+  }
+  return {
+    label: 'Check for Updates…',
+    enabled: update.supported,
+    click: () => checkForUpdates({ interactive: true }),
+  };
 }
 
 function shortenPath(p) {

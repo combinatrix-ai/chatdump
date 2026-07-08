@@ -10,6 +10,21 @@ everything is driven from the menu bar.
 
 ![One conversation in, one Markdown file out — a chat converted to a Markdown file with YAML frontmatter and a heading per turn](docs/images/chat-to-markdown.png)
 
+Every conversation lands as its own file, organized by provider and account,
+so your vault fills up into a browsable archive:
+
+```text
+Vault/
+├── chatgpt/alex@example.com/
+│   ├── 2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md
+│   └── 2026-07-04_Regex_lookbehind_help_c41b9e02.md
+├── claude/alex@example.com/
+│   └── 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
+├── gemini/alex@example.com/
+│   └── 2026-07-01_Trip_photo_captions_3b8cf104.md
+└── .chatdump/cache/…
+```
+
 ## Features
 
 - **Multiple accounts per provider** — add as many Claude, ChatGPT, or

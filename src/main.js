@@ -22,16 +22,10 @@ const {
 const { store, getAccounts } = require('./store');
 const { getSession } = require('./auth');
 const { getProvider } = require('./providers');
-const { getCliArgs } = require('./cli');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 const { startIpcServer, stopIpcServer } = require('./ipc-server');
 
-const cliArgs = getCliArgs();
-const isCliMode = cliArgs !== null;
-if (isCliMode) {
-  console.log = (...args) => console.error(...args);
-}
-const hasSingleInstanceLock = isCliMode ? true : app.requestSingleInstanceLock();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   console.log('[main] Another chatdump instance is already running; exiting');
   app.quit();
@@ -177,29 +171,6 @@ async function maybePromptCliInstall(buildMenu) {
 
 if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
-    if (isCliMode) {
-      // The only remaining reason main.js runs in headless CLI-relaunch mode
-      // is `chatdump mcp`: src/cli-entry.js execs this binary directly
-      // (without ELECTRON_RUN_AS_NODE) for that command only, since the MCP
-      // server needs a real Electron process to reach the GUI's session
-      // store. `list`/`sync` no longer relaunch Electron at all -- they
-      // delegate to an already-running GUI over the IPC socket (see
-      // src/ipc-server.js / src/ipc-client.js).
-      let exitCode = 1;
-      if (cliArgs[0] === 'mcp') {
-        try {
-          await require('./mcp').startMcpServer();
-          exitCode = 0;
-        } catch (e) {
-          console.error(e.stack || e.message);
-        }
-      } else {
-        console.error(`[main] Unsupported CLI relaunch command: ${cliArgs[0] || ''}`);
-      }
-      app.exit(exitCode);
-      return;
-    }
-
     ensureDefaultVaultPath();
     await migrateCookies();
     await cleanupOrphanPartitions();

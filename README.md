@@ -8,7 +8,7 @@ conversations from each provider's own web API, converting them to Markdown
 files in a vault folder you choose. There is no dock icon or main window —
 everything is driven from the menu bar.
 
-![chatdump menu](docs/images/menubar.png)
+![One conversation in, one Markdown file out — a chat converted to a Markdown file with YAML frontmatter and a heading per turn](docs/images/chat-to-markdown.png)
 
 ## Features
 
@@ -32,6 +32,8 @@ everything is driven from the menu bar.
   per-account vault or use the default, open the vault in Finder, toggle
   auto-sync, view recent activity, re-login, or remove the account. Globally:
   Sync All Now, the auto-sync interval, the default vault, and Add Account.
+
+![chatdump menu](docs/images/menubar.png)
 
 ## Install
 

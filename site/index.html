@@ -575,6 +575,15 @@
   .app-body .chat-body { flex: 1; min-width: 0; }
   .file-body .fld { color: #dfba76; font-weight: 600; }
   .file-body .more { opacity: 0.55; font-style: italic; }
+  .file-body .prompt { color: #86b98d; font-weight: 600; user-select: none; }
+  .file-body .cursor {
+    color: #ece2cb;
+    animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .file-body .cursor { animation: none; }
+  }
 
   /* ---------- Section headers ---------- */
 
@@ -891,24 +900,28 @@
 
         <span class="compare-arrow" aria-hidden="true">→</span>
 
-        <div class="window" aria-label="The vault folder with one Markdown file per conversation">
+        <div class="window" aria-label="Running tree on the vault folder, one Markdown file per conversation">
           <div class="titlebar">
             <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
-            <span class="title">Vault</span>
+            <span class="title">~/Vault — zsh — 76×20</span>
           </div>
-          <pre class="file-body"><span class="fld">Vault/</span>
-<span class="muted">├──</span> <span class="fld">chatgpt/john@example.com/</span>
+          <pre class="file-body"><span class="prompt">$</span> tree Vault
+<span class="fld">Vault</span>
+<span class="muted">├──</span> <span class="fld">chatgpt/john@example.com</span>
 <span class="muted">│   ├──</span> <span class="accent">2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md</span>
 <span class="muted">│   ├──</span> 2026-07-04_Regex_lookbehind_help_c41b9e02.md
 <span class="muted">│   ├──</span> 2026-07-01_Budget_planner_formula_1f77ab00.md
 <span class="muted">│   └──</span> <span class="more">…and 142 more</span>
-<span class="muted">├──</span> <span class="fld">claude/john@example.com/</span>
+<span class="muted">├──</span> <span class="fld">claude/john@example.com</span>
 <span class="muted">│   ├──</span> 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
 <span class="muted">│   └──</span> <span class="more">…and 38 more</span>
-<span class="muted">├──</span> <span class="fld">gemini/john@example.com/</span>
+<span class="muted">├──</span> <span class="fld">gemini/john@example.com</span>
 <span class="muted">│   ├──</span> 2026-07-01_Trip_photo_captions_3b8cf104.md
 <span class="muted">│   └──</span> <span class="more">…and 11 more</span>
-<span class="muted">└──</span> <span class="muted">.chatdump/cache/…</span></pre>
+<span class="muted">└──</span> <span class="muted">.chatdump/cache</span>
+
+<span class="more">3 directories, 205 files</span>
+<span class="prompt">$</span> <span class="cursor">▋</span></pre>
         </div>
       </div>
       <p class="screenshot-caption">Every thread in your sidebar lands as Markdown you own — one file per conversation, one folder per account.</p>

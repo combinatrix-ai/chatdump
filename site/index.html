@@ -494,6 +494,65 @@
   .vault-tree .code-block { line-height: 1.8; }
   .vault-tree .hd { color: #dfba76; font-weight: 600; }
 
+  /* ---------- Sidebar → vault overview ---------- */
+
+  .sync-overview { padding: clamp(2.5rem, 6vw, 4.5rem) 0; }
+  .app-body { display: flex; flex: 1; min-height: 340px; }
+  .app-body .sidebar {
+    width: 172px;
+    flex-shrink: 0;
+    background: var(--paper-alt);
+    border-right: 1px solid var(--rule);
+    padding: 0.65rem 0.55rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .sidebar .new-chat {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 0.38rem 0.55rem;
+    color: var(--ink-soft);
+    margin-bottom: 0.4rem;
+    background: var(--paper-raised);
+  }
+  .sidebar .new-chat .plus { color: var(--accent); font-weight: 700; }
+  .sidebar .thread {
+    padding: 0.34rem 0.5rem;
+    border-radius: 6px;
+    flex-shrink: 0;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sidebar .thread.active {
+    background: var(--paper-raised);
+    color: var(--ink);
+    font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .sidebar::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 60px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--paper-alt));
+  }
+  .app-body .chat-body { flex: 1; min-width: 0; }
+  .file-body .fld { color: #dfba76; font-weight: 600; }
+  .file-body .more { opacity: 0.55; font-style: italic; }
+
   /* ---------- Section headers ---------- */
 
   .section-head {
@@ -589,6 +648,9 @@
     gap: clamp(2rem, 5vw, 3.5rem);
     align-items: start;
   }
+  /* Let columns shrink below their content so long code lines scroll
+     inside .code-block instead of widening the whole page on mobile. */
+  .mcp-grid > * { min-width: 0; }
   .tool-list { margin-top: 1.6rem; }
 
   .code-block {
@@ -670,6 +732,15 @@
 
     .compare-grid { grid-template-columns: 1fr; }
     .compare-arrow { justify-self: center; transform: rotate(90deg); line-height: 1; }
+
+    /* Stack the ChatGPT sidebar above the chat so the window fits narrow screens */
+    .app-body { flex-direction: column; min-height: 0; }
+    .app-body .sidebar {
+      width: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--rule);
+      max-height: 218px;
+    }
   }
 
   @media (max-width: 640px) {
@@ -732,6 +803,77 @@
       </div>
     </div>
   </header>
+
+  <hr class="divider">
+
+  <section class="sync-overview">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Your whole sidebar, archived</span>
+        <h2>Every conversation, filed in one folder.</h2>
+        <p>Each thread across Claude, ChatGPT, and Gemini becomes its own Markdown file in your vault — the archive grows as you chat.</p>
+      </div>
+
+      <div class="compare-grid">
+        <div class="window" aria-label="A ChatGPT account with many conversations in the sidebar">
+          <div class="titlebar">
+            <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="title">chatgpt.com — john@example.com</span>
+          </div>
+          <div class="app-body">
+            <div class="sidebar" aria-hidden="true">
+              <div class="new-chat"><span class="plus">+</span> New chat</div>
+              <div class="thread active">Kyoto 3-day itinerary</div>
+              <div class="thread">Regex lookbehind help</div>
+              <div class="thread">Budget planner formula</div>
+              <div class="thread">Sourdough starter rescue</div>
+              <div class="thread">Trip photo captions</div>
+              <div class="thread">Tax filing deadlines</div>
+              <div class="thread">Book recommendations</div>
+              <div class="thread">Rename these variables</div>
+              <div class="thread">Dinner ideas for six</div>
+              <div class="thread">Explain OAuth flow</div>
+              <div class="thread">Draft resignation email</div>
+            </div>
+            <div class="chat-body">
+              <div class="bubble-user">What should I see in Kyoto in 3 days?</div>
+              <div class="msg-assistant">
+                <span class="avatar" aria-hidden="true">✳</span>
+                <div class="msg-text">
+                  <p>Day 1: Fushimi Inari early, then Tofuku-ji and an evening walk through Gion.</p>
+                  <p>Day 2: Arashiyama bamboo grove, Tenryu-ji, and the Sagano riverside.</p>
+                  <p>Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <span class="compare-arrow" aria-hidden="true">→</span>
+
+        <div class="window" aria-label="The vault folder with one Markdown file per conversation">
+          <div class="titlebar">
+            <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="title">Vault</span>
+          </div>
+          <pre class="file-body"><span class="fld">Vault/</span>
+<span class="muted">├──</span> <span class="fld">chatgpt/john@example.com/</span>
+<span class="muted">│   ├──</span> <span class="accent">2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md</span>
+<span class="muted">│   ├──</span> 2026-07-04_Regex_lookbehind_help_c41b9e02.md
+<span class="muted">│   ├──</span> 2026-07-01_Budget_planner_formula_1f77ab00.md
+<span class="muted">│   └──</span> <span class="more">…and 142 more</span>
+<span class="muted">├──</span> <span class="fld">claude/john@example.com/</span>
+<span class="muted">│   ├──</span> 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
+<span class="muted">│   └──</span> <span class="more">…and 38 more</span>
+<span class="muted">├──</span> <span class="fld">gemini/john@example.com/</span>
+<span class="muted">│   ├──</span> 2026-07-01_Trip_photo_captions_3b8cf104.md
+<span class="muted">│   └──</span> <span class="more">…and 11 more</span>
+<span class="muted">└──</span> <span class="muted">.chatdump/cache/…</span></pre>
+        </div>
+      </div>
+      <p class="screenshot-caption">Every thread in your sidebar lands as Markdown you own — one file per conversation, one folder per account.</p>
+    </div>
+  </section>
 
   <hr class="divider">
 

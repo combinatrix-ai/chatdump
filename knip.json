@@ -1,5 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["scripts/debug-openai.js", "scripts/debug-gemini.js", "build/notarize.js", "test/**/*.js"],
+  "entry": [
+    "scripts/debug-openai.js",
+    "scripts/debug-gemini.js",
+    "build/notarize.js",
+    "src/cli-entry.js",
+    "test/**/*.js"
+  ],
   "project": ["src/**/*.js", "test/**/*.js", "scripts/*.js"]
 }

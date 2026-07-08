@@ -380,6 +380,126 @@
     margin-top: 0.9rem;
   }
 
+  /* ---------- Sync example (chat -> file) ---------- */
+
+  .sync-example { padding: clamp(2.5rem, 6vw, 4.5rem) 0; }
+
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: clamp(0.9rem, 2.5vw, 1.6rem);
+    align-items: stretch;
+  }
+  .compare-arrow {
+    align-self: center;
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    color: var(--accent);
+    user-select: none;
+  }
+
+  .window {
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--paper-raised);
+    box-shadow: 0 24px 50px -28px hsl(var(--shadow) / 0.45);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .window .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.55rem 0.85rem;
+    background: var(--paper-alt);
+    border-bottom: 1px solid var(--rule);
+  }
+  .titlebar .dots { display: flex; gap: 5px; flex-shrink: 0; }
+  .titlebar .dots span {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+    opacity: 0.45;
+  }
+  .titlebar .title {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* balance the dots so the title truly centers */
+    margin-right: calc(9px * 3 + 10px);
+  }
+
+  .chat-body {
+    padding: 1.15rem 1.1rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    font-size: 0.86rem;
+    line-height: 1.55;
+    flex: 1;
+  }
+  .bubble-user {
+    align-self: flex-end;
+    max-width: 85%;
+    background: var(--paper-alt);
+    border: 1px solid var(--rule);
+    padding: 0.55rem 0.9rem;
+    border-radius: 14px 14px 4px 14px;
+  }
+  .msg-assistant {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    max-width: 95%;
+  }
+  .msg-assistant .avatar {
+    flex-shrink: 0;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink-faint);
+    font-size: 0.62rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+  }
+  .msg-assistant .msg-text { color: var(--ink-soft); }
+  .msg-assistant .msg-text p { margin: 0 0 0.45em; }
+  .msg-assistant .msg-text p:last-child { margin-bottom: 0; }
+
+  .file-body {
+    margin: 0;
+    padding: 1.05rem 1.15rem 1.2rem;
+    background: #201a11;
+    color: #ece2cb;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    line-height: 1.65;
+    overflow-x: auto;
+    flex: 1;
+  }
+  .file-body .muted { opacity: 0.55; }
+  .file-body .accent { color: #e2825a; }
+  .file-body .str { color: #a9cf9f; }
+  .file-body .hd { color: #dfba76; font-weight: 600; }
+
+  .vault-tree {
+    max-width: 46rem;
+    margin: clamp(2.2rem, 5vw, 3.2rem) auto 0;
+  }
+  .vault-tree .code-block { line-height: 1.8; }
+  .vault-tree .hd { color: #dfba76; font-weight: 600; }
+
   /* ---------- Section headers ---------- */
 
   .section-head {
@@ -553,6 +673,9 @@
     .privacy-grid { grid-template-columns: 1fr; }
     .mcp-grid { grid-template-columns: 1fr; }
     .feature-grid { grid-template-columns: repeat(2, 1fr); }
+
+    .compare-grid { grid-template-columns: 1fr; }
+    .compare-arrow { justify-self: center; transform: rotate(90deg); line-height: 1; }
   }
 
   @media (max-width: 640px) {
@@ -608,7 +731,7 @@
       <div class="hero-visual">
         <div class="ring"></div>
         <div class="ring r2"></div>
-        <img class="hero-icon" src="assets/icon.png" alt="Chativist app icon — a folder holding a chat bubble">
+        <img class="hero-icon" src="assets/icon.png" alt="Chativist app icon — a stack of conversation bubbles">
         <div class="hero-badges">
           <span class="hero-badge b1">No dock icon</span>
           <span class="hero-badge b2">No telemetry</span>
@@ -636,6 +759,79 @@
         </div>
       </div>
       <p class="screenshot-caption">The whole app lives in one dropdown — accounts, sync status, and a manual sync button.</p>
+    </div>
+  </section>
+
+  <section class="sync-example">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">From chat to plain text</span>
+        <h2>What a synced chat looks like.</h2>
+        <p>One conversation in, one Markdown file out — YAML frontmatter for the metadata, a heading for each turn.</p>
+      </div>
+
+      <div class="compare-grid">
+        <div class="window" aria-label="A conversation in a chat web interface">
+          <div class="titlebar">
+            <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="title">chatgpt.com</span>
+          </div>
+          <div class="chat-body">
+            <div class="bubble-user">What should I see in Kyoto in 3 days?</div>
+            <div class="msg-assistant">
+              <span class="avatar" aria-hidden="true">✳</span>
+              <div class="msg-text">
+                <p>Day 1: Fushimi Inari early, then Tofuku-ji and an evening walk through Gion.</p>
+                <p>Day 2: Arashiyama bamboo grove, Tenryu-ji, and the Sagano riverside.</p>
+                <p>Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <span class="compare-arrow" aria-hidden="true">→</span>
+
+        <div class="window" aria-label="The same conversation saved as a Markdown file">
+          <div class="titlebar">
+            <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="title">2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md</span>
+          </div>
+          <pre class="file-body"><span class="muted">---</span>
+<span class="accent">title</span>: <span class="str">"Kyoto 3-day itinerary"</span>
+<span class="accent">created</span>: 2026-07-06T09:12:34.000Z
+<span class="accent">updated</span>: 2026-07-06T09:14:02.000Z
+<span class="accent">model</span>: auto
+<span class="accent">source</span>: chatgpt
+<span class="accent">id</span>: <span class="str">"8f3a2c1d-90ab-4cde-8123-456789abcdef"</span>
+<span class="accent">parser_version</span>: 2
+<span class="muted">---</span>
+
+<span class="hd">## User</span>
+
+What should I see in Kyoto in 3 days?
+
+<span class="hd">## Assistant</span>
+
+Day 1: Fushimi Inari early, then Tofuku-ji and an evening walk through Gion.
+Day 2: Arashiyama bamboo grove, Tenryu-ji, and the Sagano riverside.
+Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
+        </div>
+      </div>
+      <p class="screenshot-caption">The frontmatter keeps the title, timestamps, model, source, and conversation id — the rest is just the conversation.</p>
+
+      <div class="vault-tree">
+        <p class="code-title">Where it lands in your vault</p>
+        <pre class="code-block"><span class="hd">Vault/</span>
+<span class="muted">├──</span> <span class="accent">chatgpt/alex@example.com/</span>
+<span class="muted">│   ├──</span> 2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md
+<span class="muted">│   └──</span> 2026-07-04_Regex_lookbehind_help_c41b9e02.md
+<span class="muted">├──</span> <span class="accent">claude/alex@example.com/</span>
+<span class="muted">│   └──</span> 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
+<span class="muted">├──</span> <span class="accent">gemini/alex@example.com/</span>
+<span class="muted">│   └──</span> 2026-07-01_Trip_photo_captions_3b8cf104.md
+<span class="muted">└── .chativist/cache/…</span></pre>
+        <p class="screenshot-caption">One folder per provider, one per account. Raw provider JSON is cached under <code>.chativist/</code> alongside the notes.</p>
+      </div>
     </div>
   </section>
 

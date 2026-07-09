@@ -111,6 +111,25 @@ const provider = {
     );
   },
 
+  // Fetch a *shared* conversation by its share id (from https://chatgpt.com/share/<id>).
+  // Unlike /backend-api/conversation/{id}, the share endpoint is public: it returns the
+  // shared snapshot to any authenticated session, even one that does not own the chat.
+  async fetchSharedConversationById(ses, shareId, options = {}) {
+    // A valid session is still needed to clear Cloudflare, but ownership is not required,
+    // so a missing access token is non-fatal here — send it when we have it.
+    const token = await provider.getAccessToken(ses, { signal: options.signal });
+    const raw = await makeRequest(
+      `${BASE}/backend-api/share/${encodeURIComponent(shareId)}`,
+      ses,
+      token ? { Authorization: `Bearer ${token}` } : undefined,
+      {
+        signal: options.signal,
+        timeoutMs: options.timeoutMs || 60000,
+      },
+    );
+    return normalizeSharePayload(raw, shareId);
+  },
+
   async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
     const mode = options.mode || 'sync';
     let token = await provider.getAccessToken(ses, { signal: options.signal });
@@ -380,6 +399,43 @@ const provider = {
   },
 };
 
+// The /backend-api/share/{id} payload is shaped like a conversation but with a few
+// gaps: conversation_id may be absent, and older/edge responses expose the thread as a
+// flat `linear_conversation` array instead of a `mapping`. Normalize both into the
+// mapping+current_node shape that convertToMarkdown expects.
+function normalizeSharePayload(data, shareId) {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Empty share response');
+  }
+  const conv =
+    data.conversation && typeof data.conversation === 'object' ? data.conversation : data;
+
+  let mapping = conv.mapping;
+  let currentNode = conv.current_node;
+
+  if ((!mapping || Object.keys(mapping).length === 0) && Array.isArray(conv.linear_conversation)) {
+    mapping = {};
+    let prevId = null;
+    for (const node of conv.linear_conversation) {
+      const id = node?.id || node?.message?.id;
+      if (!id) continue;
+      mapping[id] = { id, message: node.message || null, parent: prevId, children: [] };
+      if (prevId && mapping[prevId]) mapping[prevId].children.push(id);
+      prevId = id;
+    }
+    currentNode = prevId;
+  }
+
+  return {
+    ...conv,
+    mapping: mapping || {},
+    current_node: currentNode,
+    conversation_id: conv.conversation_id || conv.id || shareId,
+    title: conv.title || data.title || 'Shared conversation',
+    create_time: conv.create_time ?? data.create_time,
+  };
+}
+
 function getCurrentPathMessages(mapping, currentNodeId) {
   const start = currentNodeId ? mapping[currentNodeId] : null;
   if (start) {
@@ -480,6 +536,7 @@ provider._test = {
   timestampToIso,
   flattenMessages,
   sanitize,
+  normalizeSharePayload,
 };
 
 module.exports = provider;

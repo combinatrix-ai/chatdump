@@ -6,10 +6,40 @@ const {
   flattenMessages,
   getCurrentPathMessages,
   getLatestMessageCreateTime,
+  normalizeSharePayload,
   sanitize,
   timestampToEpochMs,
   timestampToIso,
 } = _test;
+
+test('normalizeSharePayload keeps a mapping-shaped share payload', () => {
+  const raw = {
+    title: 'Shared chat',
+    create_time: 1700000000,
+    current_node: 'b',
+    mapping: { a: { id: 'a' }, b: { id: 'b', parent: 'a' } },
+  };
+  const result = normalizeSharePayload(raw, 'share-123');
+  assert.equal(result.title, 'Shared chat');
+  assert.equal(result.current_node, 'b');
+  assert.equal(result.conversation_id, 'share-123');
+  assert.deepEqual(Object.keys(result.mapping), ['a', 'b']);
+});
+
+test('normalizeSharePayload builds a mapping from linear_conversation', () => {
+  const raw = {
+    title: 'Linear share',
+    linear_conversation: [
+      { id: 'n1', message: { id: 'n1', author: { role: 'user' } } },
+      { id: 'n2', message: { id: 'n2', author: { role: 'assistant' } } },
+    ],
+  };
+  const result = normalizeSharePayload(raw, 'share-xyz');
+  assert.equal(result.current_node, 'n2');
+  assert.equal(result.mapping.n1.parent, null);
+  assert.equal(result.mapping.n1.children[0], 'n2');
+  assert.equal(result.mapping.n2.parent, 'n1');
+});
 
 function message(id, role, text, createTime) {
   return {

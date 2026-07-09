@@ -148,9 +148,11 @@ The server exposes four tools:
 - `ask` — ask a question through chatdump's persisted browser session. It
   currently supports ChatGPT accounts and returns `answer`, `conversationId`,
   `url`, `accountId`, and `provider`.
-- `conversation` — fetch a full conversation by provider conversation id. It
-  returns Markdown by default, and returns the provider raw JSON too when
-  `includeRaw` is `true`.
+- `conversation` — fetch a full conversation as Markdown. Accepts a provider
+  conversation id, a `chatgpt.com/c/<id>` URL, or a public
+  `chatgpt.com/share/<id>` link. Share links are read through ChatGPT's public
+  share endpoint, so they resolve even for conversations the signed-in account
+  does not own. Returns the provider raw JSON too when `includeRaw` is `true`.
 - `accounts` — list configured accounts and sync status.
 - `sync` — sync selected accounts to their configured folders.
 
@@ -178,6 +180,17 @@ Then pass the returned `conversationId` to fetch the full transcript:
   "arguments": {
     "accountId": "openai:user@example.com",
     "conversationId": "123e4567-e89b-42d3-a456-426614174002"
+  }
+}
+```
+
+Or fetch a shared conversation straight from its link — no id lookup needed:
+
+```json
+{
+  "tool": "conversation",
+  "arguments": {
+    "conversationId": "https://chatgpt.com/share/123e4567-e89b-42d3-a456-426614174002"
   }
 }
 ```

@@ -1,7 +1,7 @@
 {
   "name": "chatdump",
   "productName": "chatdump",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Archive your AI chat conversations (Claude, ChatGPT, Gemini) as plain Markdown files on your Mac.",
   "author": {
     "name": "Yotaro Katayama",

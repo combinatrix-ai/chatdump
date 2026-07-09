@@ -5,7 +5,7 @@ your Claude, ChatGPT, and Gemini conversations as plain Markdown.
 
 ## Using it
 
-- [cli.md](cli.md) — the `chatdump` command-line tool (`list`, `sync`, `mcp`).
+- [cli.md](cli.md) — the `chatdump` command-line tool (`list`, `sync`, `fetch`, `mcp`).
 - [mcp.md](mcp.md) — the stdio MCP server: tools, client config, and fetching a
   conversation by id or share link.
 

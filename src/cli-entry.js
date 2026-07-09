@@ -11,7 +11,7 @@
 // `mcp` runs a thin stdio MCP server in this same pure-node process (see
 // mcp.js), whose tools each delegate to the GUI individually.
 const { parseArgs, printHelp, CliUsageError } = require('./cli');
-const { runViaDelegation } = require('./ipc-client');
+const { requestData, runViaDelegation } = require('./ipc-client');
 
 // Accept both `chatdump list` (new, direct) and `chatdump cli list`
 // (old spelling some docs/muscle-memory may still use) by stripping an
@@ -20,12 +20,44 @@ function stripLeadingCliToken(argv) {
   return argv[0] === 'cli' ? argv.slice(1) : argv;
 }
 
-async function main(argv) {
+function stripRawProviderPayload(result) {
+  const { raw, ...safeResult } = result || {};
+  return safeResult;
+}
+
+async function runFetch(options, deps = {}) {
+  const requestDataImpl = deps.requestData || requestData;
+  const stdout = deps.stdout || process.stdout;
+  const stderr = deps.stderr || process.stderr;
+
+  let result;
+  try {
+    result = await requestDataImpl('mcp.conversation', {
+      conversationId: options.conversationId,
+      accountId: options.accountIds[0],
+      provider: options.provider || undefined,
+    });
+  } catch (e) {
+    stderr.write(`${e.message}\n`);
+    return 1;
+  }
+
+  const safeResult = stripRawProviderPayload(result);
+  if (options.json) {
+    stdout.write(`${JSON.stringify(safeResult, null, 2)}\n`);
+  } else {
+    stdout.write(safeResult.markdown || '');
+  }
+  return 0;
+}
+
+async function main(argv, deps = {}) {
   const args = stripLeadingCliToken(argv);
   const options = parseArgs(args);
+  const runViaDelegationImpl = deps.runViaDelegation || runViaDelegation;
 
   if (options.command === 'help') {
-    printHelp(process.stdout);
+    printHelp(deps.stdout || process.stdout);
     return 0;
   }
 
@@ -36,23 +68,38 @@ async function main(argv) {
 
   if (options.command === 'list' || options.command === 'accounts' || options.command === 'sync') {
     const { command, ...delegatedArgs } = options;
-    return runViaDelegation(command, delegatedArgs);
+    return runViaDelegationImpl(command, delegatedArgs);
+  }
+
+  if (options.command === 'fetch') {
+    return runFetch(options, deps);
   }
 
   throw new CliUsageError(`Unhandled command: ${options.command}`);
 }
 
-main(process.argv.slice(2))
-  .then((exitCode) => {
-    process.exitCode = exitCode;
-  })
-  .catch((e) => {
-    if (e instanceof CliUsageError) {
-      process.stderr.write(`${e.message}\n`);
-      printHelp(process.stderr);
-      process.exitCode = 1;
-    } else {
-      process.stderr.write(`${e.stack || e.message}\n`);
-      process.exitCode = 1;
-    }
-  });
+if (require.main === module) {
+  main(process.argv.slice(2))
+    .then((exitCode) => {
+      process.exitCode = exitCode;
+    })
+    .catch((e) => {
+      if (e instanceof CliUsageError) {
+        process.stderr.write(`${e.message}\n`);
+        printHelp(process.stderr);
+        process.exitCode = 1;
+      } else {
+        process.stderr.write(`${e.stack || e.message}\n`);
+        process.exitCode = 1;
+      }
+    });
+}
+
+module.exports = {
+  main,
+  _test: {
+    runFetch,
+    stripLeadingCliToken,
+    stripRawProviderPayload,
+  },
+};

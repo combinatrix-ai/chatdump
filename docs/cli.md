@@ -40,6 +40,7 @@ When running from source, use `npm run cli -- <command> [options]`.
 | `help` | Print usage. |
 | `list` (alias `accounts`) | List configured accounts and their sync status. |
 | `sync` | Sync selected accounts to their configured vault folders. |
+| `fetch` | Fetch one conversation or shared ChatGPT link and print Markdown. |
 | `mcp` | Start the stdio MCP server — see [mcp.md](mcp.md). |
 
 ### `list`
@@ -73,6 +74,28 @@ chatdump list
 chatdump sync --all
 chatdump sync --account openai:user@example.com --since-days 7
 chatdump sync --provider claude --full-sync last_message_at
+```
+
+### `fetch`
+
+```sh
+chatdump fetch <url-or-id> [--account <id>] [--provider <name>] [--json]
+```
+
+Fetches a provider conversation id, a `chatgpt.com/c/<id>` URL, or a public
+`chatgpt.com/share/<id>` link. By default, it prints only the converted Markdown
+body, so the output can be piped or redirected directly.
+
+| Option | Description |
+|---|---|
+| `--account <id>` | Fetch using a specific account, e.g. `openai:user@example.com`. |
+| `--provider <name>` | Select the provider when no account is specified. |
+| `--json` | Print the full structured result without the raw provider payload. |
+
+Example:
+
+```sh
+chatdump fetch https://chatgpt.com/share/abc123 > shared-chat.md
 ```
 
 ### `mcp`

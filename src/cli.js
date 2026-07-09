@@ -1,10 +1,10 @@
 // Pure argument parsing for the chatdump CLI -- no electron, no store, no
 // scheduler. Required by src/cli-entry.js, a pure-node process launched via
 // ELECTRON_RUN_AS_NODE, which must not touch electron APIs. The actual work
-// for `list`/`sync`/`accounts`/`mcp.*` lives in src/ipc-server.js, which runs
+// for `list`/`sync`/`fetch`/`accounts`/`mcp.*` lives in src/ipc-server.js, which runs
 // inside the GUI Electron process and is reached over the IPC socket (see
 // src/ipc-client.js).
-const COMMANDS = new Set(['help', 'list', 'accounts', 'sync', 'mcp']);
+const COMMANDS = new Set(['help', 'list', 'accounts', 'sync', 'fetch', 'mcp']);
 
 function printHelp(stream = process.stdout) {
   stream.write(`chatdump CLI
@@ -12,6 +12,7 @@ function printHelp(stream = process.stdout) {
 Usage:
   chatdump list [--json]
   chatdump sync [--all] [--include-disabled] [--account <id>] [--provider <name>] [--since-days <days>] [--full-sync <created_at|last_message_at>] [--json]
+  chatdump fetch <url-or-id> [--account <id>] [--provider <name>] [--json]
   chatdump mcp
 
 Examples:
@@ -19,6 +20,7 @@ Examples:
   chatdump sync --all
   chatdump sync --account openai:user@example.com --since-days 7
   chatdump sync --account openai:user@example.com --full-sync created_at
+  chatdump fetch https://chatgpt.com/share/abc123
   chatdump mcp
 
 Notes:
@@ -45,6 +47,7 @@ function parseArgs(args) {
     json: false,
     sinceDays: undefined,
     mode: undefined,
+    conversationId: undefined,
   };
 
   if (!COMMANDS.has(options.command)) {
@@ -80,6 +83,11 @@ function parseArgs(args) {
       options.mode = parseFullSyncMode(args[++i]);
     } else if (arg.startsWith('--full-sync=')) {
       options.mode = parseFullSyncMode(arg.slice('--full-sync='.length));
+    } else if (options.command === 'fetch' && !arg.startsWith('-')) {
+      if (options.conversationId) {
+        throw new CliUsageError('fetch accepts exactly one url or conversation id');
+      }
+      options.conversationId = arg;
     } else {
       throw new CliUsageError(`Unknown option: ${arg}`);
     }
@@ -87,6 +95,18 @@ function parseArgs(args) {
 
   if (options.sinceDays !== undefined && options.mode) {
     throw new CliUsageError('--since-days and --full-sync cannot be used together');
+  }
+
+  if (options.command === 'fetch') {
+    if (!options.conversationId) {
+      throw new CliUsageError('fetch requires a url or conversation id');
+    }
+    if (options.accountIds.length > 1) {
+      throw new CliUsageError('fetch accepts at most one --account');
+    }
+    if (options.all || options.includeDisabled || options.sinceDays !== undefined || options.mode) {
+      throw new CliUsageError('fetch supports only --account, --provider, and --json');
+    }
   }
 
   return options;

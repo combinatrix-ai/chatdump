@@ -108,6 +108,9 @@ Commands:
 - `sync` — sync selected accounts. Options: `--all`, `--include-disabled`,
   `--account <id>` (repeatable), `--provider <name>`, `--since-days <days>`,
   `--full-sync <created_at|last_message_at>`, `--json`.
+- `fetch <url-or-id>` — fetch one provider conversation id, `chatgpt.com/c/<id>`
+  URL, or public `chatgpt.com/share/<id>` link. Options: `--account <id>`,
+  `--provider <name>`, `--json`.
 - `mcp` — start the stdio MCP server (see below).
 
 Examples:
@@ -117,6 +120,8 @@ Examples:
 /Applications/chatdump.app/Contents/MacOS/chatdump cli sync --all
 /Applications/chatdump.app/Contents/MacOS/chatdump cli sync \
   --account openai:user@example.com --since-days 7
+/Applications/chatdump.app/Contents/MacOS/chatdump cli fetch \
+  https://chatgpt.com/share/abc123
 ```
 
 When running from source, use `npm run cli -- <command> [options]`.

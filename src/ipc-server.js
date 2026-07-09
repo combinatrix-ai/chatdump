@@ -198,6 +198,7 @@ async function handleMcpConversation(args, send, deps) {
     accountId: result.accountId,
     provider: result.provider,
     conversationId: result.conversationId,
+    shared: result.shared,
     title: result.title,
     markdown: result.markdown,
   };

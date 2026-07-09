@@ -95,11 +95,12 @@ async function startMcpServer() {
   server.registerTool(
     'conversation',
     {
-      title: 'Get a chatdump conversation by id',
+      title: 'Get a chatdump conversation by id or share link',
       description:
-        'Fetch a full conversation by provider conversation id. Currently supports ChatGPT conversation ids.',
+        'Fetch a full conversation by provider conversation id, a chatgpt.com/c/<id> URL, or a public chatgpt.com/share/<id> link. Share links are fetched via the public share endpoint, so they work even when the logged-in account does not own the conversation. Currently supports ChatGPT.',
       inputSchema: {
-        conversationId: z.string().min(1),
+        conversationId: z.string().min(1).optional(),
+        shareId: z.string().optional(),
         accountId: z.string().optional(),
         provider: z.string().optional(),
         includeRaw: z.boolean().optional(),

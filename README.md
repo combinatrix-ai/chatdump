@@ -127,6 +127,9 @@ chatdump can run as a stdio MCP server for local agents, reusing the app's
 configured accounts and persisted login sessions. It does not open provider
 login windows; re-login from the menu bar app if auth expired.
 
+> Full reference: [docs/cli.md](docs/cli.md) and [docs/mcp.md](docs/mcp.md).
+> How the providers work internally lives under [docs/internals/](docs/internals/).
+
 Project-scoped MCP client example, pointing at the packaged app:
 
 ```json

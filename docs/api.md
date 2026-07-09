@@ -73,6 +73,15 @@ chatdump fetches conversations from three AI chat providers. Each has a differen
 | Account info | GET | `/backend-api/me` (with Bearer token) |
 | Conversation list | GET | `/backend-api/conversations?offset={n}&limit=100` |
 | Single conversation | GET | `/backend-api/conversation/{id}` (with Bearer token) |
+| Shared conversation | GET | `/backend-api/share/{share_id}` (public snapshot; owner not required) |
+
+The share endpoint returns a conversation-shaped payload for a public
+`chatgpt.com/share/<id>` link. Unlike `/backend-api/conversation/{id}`, it is
+readable by any signed-in session (a valid session is still needed to pass
+Cloudflare), so it resolves even for conversations the account does not own.
+The payload normally carries `mapping` + `current_node`; some responses expose
+a flat `linear_conversation` array instead, which is normalized into the same
+mapping shape before Markdown conversion.
 
 ### Deduplication
 - **Unique key**: `conversation.id` (UUID v4, e.g. `123e4567-e89b-42d3-a456-426614174001`)

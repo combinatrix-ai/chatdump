@@ -131,7 +131,7 @@ const provider = {
           messages,
           _rawMsgResp: msgResp,
         };
-        onConversation?.(full);
+        await onConversation?.(full);
         timestamps[conv.id] = conv.timestamp;
       } catch (e) {
         console.error(`[gemini] Failed ${conv.id}: ${e.message}`);

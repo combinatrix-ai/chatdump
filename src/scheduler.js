@@ -1,4 +1,5 @@
 const { app } = require('electron');
+const { materializeConversationAssets } = require('./assets');
 const {
   store,
   getAccounts,
@@ -73,10 +74,10 @@ function startVaultAccess(accountId) {
   }
 }
 
-function withVaultAccess(accountId, action) {
+async function withVaultAccessAsync(accountId, action) {
   const stopAccessing = startVaultAccess(accountId);
   try {
-    return action();
+    return await action();
   } finally {
     stopAccessing?.();
   }
@@ -144,9 +145,13 @@ async function syncAccount(accountId, onStatus, options = {}) {
       return;
     }
 
+    const ses = getSession(accountId);
     try {
-      const reparsed = withVaultAccess(accountId, () =>
-        reparseOutdated(vaultPath, provider, account.email || account.id),
+      const reparsed = await withVaultAccessAsync(accountId, () =>
+        reparseOutdated(vaultPath, provider, account.email || account.id, {
+          session: ses,
+          signal: abortController.signal,
+        }),
       );
       if (reparsed > 0) {
         appendLog(accountId, {
@@ -166,7 +171,6 @@ async function syncAccount(accountId, onStatus, options = {}) {
     setProgress(accountId, 'Fetching…');
     onStatus?.('syncing', `${provider.displayName}: Fetching...`, accountId);
 
-    const ses = getSession(accountId);
     const timestamps = account.timestamps || {};
     let written = 0;
     let fetched = 0;
@@ -179,10 +183,10 @@ async function syncAccount(accountId, onStatus, options = {}) {
       const accountKey = account.email || account.id;
 
       // onConversation callback: write each conversation immediately as it's fetched
-      const onConversation = (conv) => {
+      const onConversation = async (conv) => {
         fetched++;
         try {
-          withVaultAccess(accountId, () => {
+          await withVaultAccessAsync(accountId, async () => {
             const id = getConversationId(conv, provider);
             if (id && id !== 'unknown') {
               const rawPayload = provider.getRawCache ? provider.getRawCache(conv) : conv;
@@ -192,7 +196,15 @@ async function syncAccount(accountId, onStatus, options = {}) {
                 console.error(`[${account.provider}] Cache write failed for ${id}: ${e.message}`);
               }
             }
-            const md = provider.convertToMarkdown(conv);
+            const assetPaths = await materializeConversationAssets({
+              vaultPath,
+              provider,
+              accountKey,
+              conversation: conv,
+              session: ses,
+              signal: abortController.signal,
+            });
+            const md = provider.convertToMarkdown(conv, { assetPaths });
             const filename = provider.makeFilename(conv);
             const changed = writeConversation(vaultPath, provider.subdir, accountKey, filename, md);
             if (changed) written++;

@@ -1,4 +1,4 @@
-const { makeRequest } = require('./request');
+const { makeBinaryRequest, makeRequest } = require('./request');
 const { withRetry } = require('./retry');
 
 const BASE = 'https://chatgpt.com';
@@ -13,7 +13,7 @@ const provider = {
   cookieName: '__Secure-next-auth.session-token',
   cookiePrefix: true,
   meEndpoint: null, // We use cookies + /api/auth/session instead
-  parserVersion: 2,
+  parserVersion: 3,
 
   getId(conversation) {
     return conversation?.conversation_id || conversation?.id || '';
@@ -25,6 +25,14 @@ const provider = {
 
   parseFromCache(raw) {
     return raw;
+  },
+
+  extractDocument(conversation) {
+    const pathMessages = getCurrentPathMessages(
+      conversation.mapping || {},
+      conversation.current_node,
+    );
+    return extractDocument(pathMessages);
   },
 
   // Extract account info from cookies (primary method)
@@ -128,6 +136,61 @@ const provider = {
       },
     );
     return normalizeSharePayload(raw, shareId);
+  },
+
+  async downloadAsset(ses, asset, options = {}) {
+    const assetId = parseAssetPointer(asset.pointer);
+    const token = await provider.getAccessToken(ses, { signal: options.signal });
+    if (!token) throw new Error('AUTH_EXPIRED');
+    const headers = { Authorization: `Bearer ${token}` };
+    const requestOptions = {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs || 60000,
+      maxBytes: options.maxBytes || 50 * 1024 * 1024,
+      allowedHosts: ['chatgpt.com'],
+      allowedHostSuffixes: ['oaiusercontent.com'],
+    };
+    const fileUrl = `${BASE}/backend-api/files/${encodeURIComponent(assetId)}/download`;
+
+    let resolverReturnedJson = false;
+    let resolved = null;
+    try {
+      resolved = await makeRequest(fileUrl, ses, headers, {
+        signal: options.signal,
+        timeoutMs: requestOptions.timeoutMs,
+        redactSecrets: true,
+      });
+      resolverReturnedJson = true;
+    } catch (e) {
+      if (e.message === 'AUTH_EXPIRED' || e.message === 'Request aborted') throw e;
+    }
+    const downloadUrl = resolved?.download_url || resolved?.url;
+    if (downloadUrl) {
+      const validatedUrl = validateAssetDownloadUrl(downloadUrl);
+      const downloadHost = new URL(validatedUrl).hostname;
+      return makeBinaryRequest(
+        validatedUrl,
+        ses,
+        downloadHost === 'chatgpt.com' ? headers : {},
+        requestOptions,
+      );
+    }
+
+    if (!resolverReturnedJson) {
+      try {
+        return await makeBinaryRequest(fileUrl, ses, headers, requestOptions);
+      } catch (e) {
+        if (e.message === 'AUTH_EXPIRED' || e.message === 'Request aborted') throw e;
+        if (e.statusCode && ![404, 405].includes(e.statusCode)) throw e;
+      }
+    }
+
+    return makeBinaryRequest(
+      `${BASE}/backend-api/estuary/content?id=${encodeURIComponent(assetId)}`,
+      ses,
+      headers,
+      requestOptions,
+    );
   },
 
   async fetchConversations(ses, timestamps, onProgress, onConversation, options = {}) {
@@ -303,7 +366,7 @@ const provider = {
             },
           },
         );
-        onConversation?.(full);
+        await onConversation?.(full);
         const pathMessages = getCurrentPathMessages(full.mapping || {}, full.current_node);
         timestamps[conv.id] = {
           update_time: normalizeTimestamp(full.update_time) || normalizeTimestamp(conv.update_time),
@@ -351,7 +414,7 @@ const provider = {
     return askChatGptInBrowser(ses, options);
   },
 
-  convertToMarkdown(conversation) {
+  convertToMarkdown(conversation, options = {}) {
     const title = conversation.title || 'Untitled';
     const created = timestampToIso(conversation.create_time);
     const pathMessages = getCurrentPathMessages(
@@ -376,15 +439,9 @@ const provider = {
       .filter(Boolean)
       .join('\n');
 
-    const messages = flattenMessages(pathMessages);
-    const body = messages
-      .map((msg) => {
-        const role = msg.role === 'user' ? 'User' : msg.role === 'assistant' ? 'Assistant' : null;
-        if (!role) return null;
-        return `## ${role}\n\n${msg.text}`;
-      })
-      .filter(Boolean)
-      .join('\n\n');
+    const document = extractDocument(pathMessages);
+    const assetPaths = options.assetPaths || {};
+    const body = renderTurns(document.turns, assetPaths);
 
     return `${frontmatter}\n\n${body}\n`;
   },
@@ -509,17 +566,158 @@ function timestampToEpochMs(value) {
 }
 
 function flattenMessages(messages) {
-  return messages
-    .filter((message) => message?.content?.parts)
-    .map((message) => {
-      const text = message.content.parts.filter((p) => typeof p === 'string').join('\n\n');
-      if (!text.trim()) return null;
-      return {
-        role: message.author?.role || 'unknown',
-        text,
-      };
+  return extractDocument(messages)
+    .turns.map((turn) => {
+      const text = turn.parts
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n\n');
+      return text.trim() ? { role: turn.role, text } : null;
     })
     .filter(Boolean);
+}
+
+function assetFromPart(part) {
+  if (!part || typeof part !== 'object' || part.content_type !== 'image_asset_pointer') {
+    return null;
+  }
+  const pointer = String(part.asset_pointer || '');
+  const match = pointer.match(/^sediment:\/\/(file_[A-Za-z0-9_-]+)$/);
+  if (!match) return null;
+  const mimeType = String(part.mime_type || '').toLowerCase();
+  if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mimeType)) return null;
+  return {
+    id: match[1],
+    pointer,
+    mimeType,
+    sizeBytes: Number.isSafeInteger(part.size_bytes) && part.size_bytes > 0 ? part.size_bytes : 0,
+    width: Number.isSafeInteger(part.width) && part.width > 0 ? part.width : null,
+    height: Number.isSafeInteger(part.height) && part.height > 0 ? part.height : null,
+  };
+}
+
+function parseAssetPointer(pointer) {
+  const match = String(pointer || '').match(/^sediment:\/\/(file_[A-Za-z0-9_-]+)$/);
+  if (!match) throw new Error('Invalid ChatGPT image asset pointer');
+  return match[1];
+}
+
+function validateAssetDownloadUrl(value) {
+  const url = new URL(value);
+  const allowed =
+    url.hostname === 'chatgpt.com' ||
+    url.hostname === 'oaiusercontent.com' ||
+    url.hostname.endsWith('.oaiusercontent.com');
+  if (url.protocol !== 'https:' || !allowed) {
+    throw new Error(`Untrusted ChatGPT image URL host: ${url.hostname}`);
+  }
+  return url.toString();
+}
+
+function messageParts(message, options = {}) {
+  const contentType = message?.content?.content_type;
+  const visibleContent =
+    !contentType || contentType === 'text' || contentType === 'multimodal_text';
+  if (!visibleContent) return { parts: [], assets: [] };
+  const generated = options.generated === true;
+  const includeText = options.includeText !== false;
+  const alt = generated
+    ? String(message?.metadata?.image_gen_title || 'Generated image')
+    : String(message?.metadata?.image_title || 'Uploaded image');
+  const parts = [];
+  const assets = [];
+  for (const value of message?.content?.parts || []) {
+    if (includeText && typeof value === 'string' && value.trim()) {
+      parts.push({ type: 'text', text: value });
+      continue;
+    }
+    const asset = assetFromPart(value);
+    if (!asset) continue;
+    assets.push(asset);
+    parts.push({ type: 'image', assetId: asset.id, alt, generated });
+  }
+  return { parts, assets };
+}
+
+function appendUniqueImage(turn, imagePart) {
+  if (turn.parts.some((part) => part.type === 'image' && part.assetId === imagePart.assetId))
+    return;
+  turn.parts.push(imagePart);
+}
+
+function extractDocument(messages) {
+  const turns = [];
+  const assets = new Map();
+
+  for (const message of messages) {
+    const role = message?.author?.role;
+    if (role === 'user' || role === 'assistant') {
+      const extracted = messageParts(message);
+      if (extracted.parts.length === 0) continue;
+
+      let turn = null;
+      const previous = turns.at(-1);
+      if (role === 'assistant' && previous?.role === 'assistant' && previous.synthetic) {
+        turn = previous;
+        turn.synthetic = false;
+      } else {
+        turn = { role, parts: [], synthetic: false };
+        turns.push(turn);
+      }
+      for (const part of extracted.parts) {
+        if (part.type === 'image') appendUniqueImage(turn, part);
+        else turn.parts.push(part);
+      }
+      for (const asset of extracted.assets) assets.set(asset.id, asset);
+      continue;
+    }
+
+    if (role === 'tool') {
+      const extracted = messageParts(message, { generated: true, includeText: false });
+      if (extracted.parts.length === 0) continue;
+      let turn = turns.at(-1);
+      if (!turn || turn.role !== 'assistant') {
+        turn = { role: 'assistant', parts: [], synthetic: true };
+        turns.push(turn);
+      }
+      for (const part of extracted.parts) appendUniqueImage(turn, part);
+      for (const asset of extracted.assets) assets.set(asset.id, asset);
+    }
+  }
+
+  return {
+    turns: turns.map(({ role, parts }) => ({ role, parts })),
+    assets: [...assets.values()],
+  };
+}
+
+function escapeMarkdownAlt(value) {
+  return String(value || 'Image')
+    .replace(/\\/g, '\\\\')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]');
+}
+
+function renderTurns(turns, assetPaths = {}) {
+  return turns
+    .map((turn) => {
+      const role = turn.role === 'user' ? 'User' : turn.role === 'assistant' ? 'Assistant' : null;
+      if (!role) return null;
+      const content = turn.parts
+        .map((part) => {
+          if (part.type === 'text') return part.text;
+          if (part.type !== 'image') return null;
+          const localPath = assetPaths[part.assetId];
+          if (localPath) return `![${escapeMarkdownAlt(part.alt)}](${localPath})`;
+          const label = part.generated ? 'Generated image' : 'Image';
+          return `[${label}: ${part.alt}]`;
+        })
+        .filter(Boolean)
+        .join('\n\n');
+      return content ? `## ${role}\n\n${content}` : null;
+    })
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function sanitize(name) {
@@ -535,6 +733,11 @@ provider._test = {
   timestampToEpochMs,
   timestampToIso,
   flattenMessages,
+  extractDocument,
+  renderTurns,
+  assetFromPart,
+  parseAssetPointer,
+  validateAssetDownloadUrl,
   sanitize,
   normalizeSharePayload,
 };

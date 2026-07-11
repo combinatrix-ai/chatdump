@@ -97,7 +97,7 @@ const provider = {
           undefined,
           { signal: options.signal },
         );
-        onConversation?.(full);
+        await onConversation?.(full);
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {
         console.error(`[claude] Failed ${conv.uuid}: ${e.message}`);

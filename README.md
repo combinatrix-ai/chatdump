@@ -17,7 +17,8 @@ so your vault fills up into a browsable archive:
 Vault/
 ├── chatgpt/alex@example.com/
 │   ├── 2026-07-06_Kyoto_3-day_itinerary_8f3a2c1d.md
-│   └── 2026-07-04_Regex_lookbehind_help_c41b9e02.md
+│   ├── 2026-07-04_Regex_lookbehind_help_c41b9e02.md
+│   └── assets/<conversation-id>/<asset-id>.png
 ├── claude/alex@example.com/
 │   └── 2026-07-05_Sourdough_starter_rescue_a7d02e55.md
 ├── gemini/alex@example.com/
@@ -43,6 +44,9 @@ Vault/
   frontmatter, and the provider's raw API response is cached alongside it at
   `{vault}/.chatdump/cache/{provider}/{account}/{id}.json` (`{provider}` is
   `claude`, `chatgpt`, or `gemini`).
+- **Offline ChatGPT images** — uploaded and generated images are downloaded to
+  the account's `assets/<conversation-id>/` folder and embedded with relative
+  Markdown links instead of expiring remote URLs.
 - **Menu bar controls** — per account: Sync Now / Stop Syncing, set a
   per-account vault or use the default, open the vault in Finder, toggle
   auto-sync, view recent activity, re-login, or remove the account. Globally:

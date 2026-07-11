@@ -57,7 +57,7 @@ account directory:
 ```text
 Vault/chatgpt/account/
 ├── 2026-07-11_New_chat_6a51cc31.md
-└── _assets/
+└── assets/
     └── 6a51cc31-45a4-83ee-80a5-3ea777eff9b7/
         └── file_000000001bb8720bbfbe8e70c86df68d.png
 ```
@@ -67,7 +67,7 @@ The Markdown uses a relative path:
 ```markdown
 ## Assistant
 
-![Spring park portrait of a golden retriever](_assets/6a51cc31-45a4-83ee-80a5-3ea777eff9b7/file_000000001bb8720bbfbe8e70c86df68d.png)
+![Spring park portrait of a golden retriever](assets/6a51cc31-45a4-83ee-80a5-3ea777eff9b7/file_000000001bb8720bbfbe8e70c86df68d.png)
 ```
 
 Conversation titles and Markdown filenames can change, so assets must not be
@@ -230,7 +230,7 @@ Do not return expiring signed URLs as an archival substitute.
   fails.
 - Never send local files or cached provider media to another service.
 - Cancellation aborts active downloads and removes temporary files.
-- The account's vault security scope wraps both Markdown and `_assets` writes.
+- The account's vault security scope wraps both Markdown and `assets` writes.
 
 ## Test Plan
 
@@ -273,4 +273,4 @@ rather than generating a new image solely for the test.
 4. Materialize ChatGPT assets during normal sync and render local links.
 5. Add asynchronous raw-cache backfill and bump the ChatGPT parser version.
 6. Add generated-image and upload integration coverage.
-7. Document the user-visible `_assets` layout in the README.
+7. Document the user-visible `assets` layout in the README.

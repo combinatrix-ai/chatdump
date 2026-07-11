@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { materializeConversationAssets } = require('./assets');
 const { readRawCache } = require('./cache');
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
@@ -27,7 +28,7 @@ function sanitizeAccountKey(accountKey) {
   return String(accountKey).replace(/[/\\:*?"<>|]/g, '_');
 }
 
-function reparseOutdated(vaultPath, provider, accountKey) {
+async function reparseOutdated(vaultPath, provider, accountKey, options = {}) {
   if (!vaultPath || !provider?.parserVersion) return 0;
   const dir = path.join(vaultPath, provider.subdir, sanitizeAccountKey(accountKey));
   if (!fs.existsSync(dir)) return 0;
@@ -56,9 +57,18 @@ function reparseOutdated(vaultPath, provider, accountKey) {
     let regenerated;
     try {
       const conv = provider.parseFromCache ? provider.parseFromCache(raw) : raw;
-      regenerated = provider.convertToMarkdown(conv);
+      const assetPaths = await materializeConversationAssets({
+        vaultPath,
+        provider,
+        accountKey,
+        conversation: conv,
+        session: options.session,
+        signal: options.signal,
+      });
+      regenerated = provider.convertToMarkdown(conv, { assetPaths });
     } catch (e) {
-      console.error(`[reparse] convertToMarkdown failed for ${fm.id}: ${e.message}`);
+      if (options.signal?.aborted || e.message === 'Request aborted') throw e;
+      console.error(`[reparse] materialization failed for ${fm.id}: ${e.message}`);
       continue;
     }
 

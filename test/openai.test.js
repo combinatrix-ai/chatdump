@@ -4,12 +4,16 @@ const { _test } = require('../src/providers/openai');
 
 const {
   flattenMessages,
+  extractDocument,
   getCurrentPathMessages,
   getLatestMessageCreateTime,
   normalizeSharePayload,
+  parseAssetPointer,
+  renderTurns,
   sanitize,
   timestampToEpochMs,
   timestampToIso,
+  validateAssetDownloadUrl,
 } = _test;
 
 test('normalizeSharePayload keeps a mapping-shaped share payload', () => {
@@ -169,6 +173,124 @@ test('flattenMessages joins string parts and skips non-string or empty content',
       { role: 'user', text: 'first\n\nsecond' },
       { role: 'assistant', text: 'answer' },
     ],
+  );
+});
+
+test('extractDocument keeps uploaded images in user part order', () => {
+  const result = extractDocument([
+    {
+      author: { role: 'user' },
+      content: {
+        content_type: 'multimodal_text',
+        parts: [
+          {
+            content_type: 'image_asset_pointer',
+            asset_pointer: 'sediment://file_upload123',
+            mime_type: 'image/jpeg',
+            size_bytes: 12,
+            width: 10,
+            height: 20,
+          },
+          'describe this',
+        ],
+      },
+    },
+  ]);
+
+  assert.deepEqual(result.turns, [
+    {
+      role: 'user',
+      parts: [
+        {
+          type: 'image',
+          assetId: 'file_upload123',
+          alt: 'Uploaded image',
+          generated: false,
+        },
+        { type: 'text', text: 'describe this' },
+      ],
+    },
+  ]);
+  assert.deepEqual(result.assets, [
+    {
+      id: 'file_upload123',
+      pointer: 'sediment://file_upload123',
+      mimeType: 'image/jpeg',
+      sizeBytes: 12,
+      width: 10,
+      height: 20,
+    },
+  ]);
+});
+
+test('extractDocument creates one assistant turn for duplicate generated tool images', () => {
+  const image = {
+    content_type: 'image_asset_pointer',
+    asset_pointer: 'sediment://file_generated123',
+    mime_type: 'image/png',
+    size_bytes: 10,
+    width: 1254,
+    height: 1254,
+  };
+  const result = extractDocument([
+    { author: { role: 'user' }, content: { content_type: 'text', parts: ['make a dog'] } },
+    {
+      author: { role: 'tool' },
+      content: { content_type: 'multimodal_text', parts: [image] },
+      metadata: { image_gen_title: 'Happy dog' },
+    },
+    { author: { role: 'system' }, content: { content_type: 'text', parts: ['internal'] } },
+    {
+      author: { role: 'tool' },
+      content: { content_type: 'multimodal_text', parts: [image, 'Model caption: private'] },
+      metadata: { image_gen_title: 'Happy dog' },
+    },
+    { author: { role: 'assistant' }, content: { content_type: 'text', parts: [''] } },
+  ]);
+
+  assert.deepEqual(result.turns, [
+    { role: 'user', parts: [{ type: 'text', text: 'make a dog' }] },
+    {
+      role: 'assistant',
+      parts: [
+        {
+          type: 'image',
+          assetId: 'file_generated123',
+          alt: 'Happy dog',
+          generated: true,
+        },
+      ],
+    },
+  ]);
+  assert.equal(result.assets.length, 1);
+});
+
+test('renderTurns uses local image paths and readable unresolved markers', () => {
+  const turns = [
+    {
+      role: 'assistant',
+      parts: [
+        { type: 'image', assetId: 'file_a', alt: 'Dog [portrait]', generated: true },
+        { type: 'image', assetId: 'file_b', alt: 'Reference', generated: false },
+      ],
+    },
+  ];
+  assert.equal(
+    renderTurns(turns, { file_a: 'assets/conversation/file_a.png' }),
+    '## Assistant\n\n![Dog \\[portrait\\]](assets/conversation/file_a.png)\n\n[Image: Reference]',
+  );
+});
+
+test('asset pointer and download URL validation reject unsafe values', () => {
+  assert.equal(parseAssetPointer('sediment://file_abc-123'), 'file_abc-123');
+  assert.throws(() => parseAssetPointer('https://evil.example/file'), /Invalid/);
+  assert.equal(
+    validateAssetDownloadUrl('https://files.oaiusercontent.com/signed/path'),
+    'https://files.oaiusercontent.com/signed/path',
+  );
+  assert.throws(
+    () => validateAssetDownloadUrl('https://oaiusercontent.com.evil.example/path'),
+    /Untrusted/,
   );
 });
 

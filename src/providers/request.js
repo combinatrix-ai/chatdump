@@ -126,6 +126,7 @@ function setupRequestCancellation(req, signal, timeoutMs, onCancel) {
   }
 
   return {
+    cancel,
     finish() {
       if (settled) return false;
       settled = true;
@@ -133,6 +134,22 @@ function setupRequestCancellation(req, signal, timeoutMs, onCancel) {
       return true;
     },
   };
+}
+
+function redactedHeaders(headers) {
+  return Object.fromEntries(
+    Object.entries(headers || {}).map(([key, value]) => [
+      key,
+      /authorization|cookie/i.test(key) ? '[redacted]' : value,
+    ]),
+  );
+}
+
+function isAllowedHost(hostname, allowedHosts, allowedHostSuffixes) {
+  return (
+    allowedHosts.includes(hostname) ||
+    allowedHostSuffixes.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`))
+  );
 }
 
 async function makeRequest(url, ses, extraHeaders, options = {}) {
@@ -147,19 +164,20 @@ async function makeRequest(url, ses, extraHeaders, options = {}) {
     ...(cookieHeader ? { Cookie: cookieHeader } : {}),
     ...(extraHeaders || {}),
   };
+  const logHeaders = options.redactSecrets ? redactedHeaders(requestHeaders) : requestHeaders;
   const startedAt = Date.now();
 
   return new Promise((resolve, reject) => {
-    const options = { url, useSessionCookies: !ses };
-    if (ses) options.session = ses;
+    const requestOptions = { url, useSessionCookies: !ses };
+    if (ses) requestOptions.session = ses;
 
-    const req = net.request(options);
+    const req = net.request(requestOptions);
     for (const [k, v] of Object.entries(requestHeaders)) {
       req.setHeader(k, v);
     }
 
     const lifecycle = setupRequestCancellation(req, signal, timeoutMs, (error) => {
-      logRequestError('json', 'GET', url, startedAt, requestHeaders, error);
+      logRequestError('json', 'GET', url, startedAt, logHeaders, error);
       reject(error);
     });
 
@@ -200,10 +218,10 @@ async function makeRequest(url, ses, extraHeaders, options = {}) {
           url,
           status,
           durationMs,
-          requestHeaders,
+          requestHeaders: logHeaders,
           responseHeaders,
           responseSummary: summary,
-          responseBody: truncate(body),
+          responseBody: options.redactSecrets ? undefined : truncate(body),
           ok,
         });
 
@@ -225,7 +243,7 @@ async function makeRequest(url, ses, extraHeaders, options = {}) {
     });
     req.on('error', (err) => {
       if (!lifecycle.finish()) return;
-      logRequestError('json', 'GET', url, startedAt, requestHeaders, err);
+      logRequestError('json', 'GET', url, startedAt, logHeaders, err);
       reject(err);
     });
     req.end();
@@ -297,6 +315,116 @@ async function makeRawRequest(url, ses, options = {}) {
       if (!lifecycle.finish()) return;
       logRequestError('raw', 'GET', url, startedAt, requestHeaders, err);
       reject(err);
+    });
+    req.end();
+  });
+}
+
+async function makeBinaryRequest(url, ses, extraHeaders = {}, options = {}) {
+  const { signal, timeoutMs = 60000, maxBytes = 50 * 1024 * 1024 } = options;
+  throwIfAborted(signal);
+  const parsedUrl = new URL(url);
+  const allowedHosts = options.allowedHosts || [];
+  const allowedHostSuffixes = options.allowedHostSuffixes || [];
+  if (parsedUrl.protocol !== 'https:') throw new Error('Binary request requires HTTPS');
+  if (
+    (allowedHosts.length > 0 || allowedHostSuffixes.length > 0) &&
+    !isAllowedHost(parsedUrl.hostname, allowedHosts, allowedHostSuffixes)
+  ) {
+    throw new Error(`Binary request host is not allowed: ${parsedUrl.hostname}`);
+  }
+
+  const cookieHeader = await buildCookieHeader(ses, [url]);
+  throwIfAborted(signal);
+  const requestHeaders = {
+    Accept: 'image/png,image/jpeg,image/webp,image/gif,application/octet-stream',
+    ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+    ...extraHeaders,
+  };
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const requestOptions = { url, redirect: 'manual', useSessionCookies: !ses };
+    if (ses) requestOptions.session = ses;
+    const req = net.request(requestOptions);
+    for (const [key, value] of Object.entries(requestHeaders)) req.setHeader(key, value);
+
+    const safeHeaders = redactedHeaders(requestHeaders);
+    const lifecycle = setupRequestCancellation(req, signal, timeoutMs, (error) => {
+      logRequestError('binary', 'GET', parsedUrl.origin, startedAt, safeHeaders, error);
+      reject(error);
+    });
+
+    req.on('redirect', (_statusCode, _method, redirectUrl) => {
+      let redirect;
+      try {
+        redirect = new URL(redirectUrl);
+      } catch {
+        lifecycle.cancel(new Error('Invalid image redirect URL'));
+        return;
+      }
+      if (
+        redirect.protocol !== 'https:' ||
+        !isAllowedHost(redirect.hostname, allowedHosts, allowedHostSuffixes)
+      ) {
+        lifecycle.cancel(new Error(`Image redirect host is not allowed: ${redirect.hostname}`));
+        return;
+      }
+      if (redirect.hostname !== parsedUrl.hostname) {
+        req.removeHeader('Authorization');
+        req.removeHeader('Cookie');
+      }
+      req.followRedirect();
+    });
+
+    req.on('response', (response) => {
+      const status = response.statusCode;
+      const responseHeaders = response.headers;
+      const chunks = [];
+      let size = 0;
+
+      response.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > maxBytes) {
+          lifecycle.cancel(createHttpError(`Image exceeds ${maxBytes} byte limit`));
+          return;
+        }
+        chunks.push(Buffer.from(chunk));
+      });
+      response.on('end', () => {
+        if (!lifecycle.finish()) return;
+        const data = Buffer.concat(chunks, size);
+        const durationMs = Date.now() - startedAt;
+        const contentType = getHeader(responseHeaders, 'content-type');
+        logHttp({
+          kind: 'binary',
+          method: 'GET',
+          url: parsedUrl.origin,
+          status,
+          durationMs,
+          requestHeaders: safeHeaders,
+          responseHeaders: {
+            'content-type': contentType,
+            'content-length': getHeader(responseHeaders, 'content-length'),
+          },
+          responseSummary: { bytes: data.length },
+          ok: status < 400,
+        });
+        if (status === 401 || status === 403) {
+          reject(createAuthExpiredError(status));
+          return;
+        }
+        if (status >= 400) {
+          reject(createHttpError(`Image request failed: HTTP ${status}`, status));
+          return;
+        }
+        resolve({ data, contentType, finalUrl: response.url || url, status });
+      });
+    });
+    req.on('error', (error) => {
+      if (!lifecycle.finish()) return;
+      logRequestError('binary', 'GET', parsedUrl.origin, startedAt, safeHeaders, error);
+      reject(error);
     });
     req.end();
   });
@@ -385,7 +513,8 @@ async function makeRawPostRequest(
 
 module.exports = {
   makeRequest,
+  makeBinaryRequest,
   makeRawRequest,
   makeRawPostRequest,
-  _test: { createUtf8Accumulator },
+  _test: { createUtf8Accumulator, isAllowedHost, redactedHeaders },
 };

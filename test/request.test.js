@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { _test } = require('../src/providers/request');
 
-const { createUtf8Accumulator } = _test;
+const { createUtf8Accumulator, isAllowedHost, redactedHeaders } = _test;
 
 function decodeInTwoChunks(input, offset) {
   const bytes = Buffer.from(input);
@@ -37,4 +37,20 @@ test('createUtf8Accumulator passes ASCII through', () => {
   acc.write(Buffer.from('world'));
 
   assert.equal(acc.end(), 'hello, world');
+});
+
+test('binary request helpers redact auth and enforce hostname boundaries', () => {
+  assert.deepEqual(
+    redactedHeaders({ Authorization: 'Bearer secret', Cookie: 'secret', Accept: 'image/png' }),
+    { Authorization: '[redacted]', Cookie: '[redacted]', Accept: 'image/png' },
+  );
+  assert.equal(isAllowedHost('chatgpt.com', ['chatgpt.com'], ['oaiusercontent.com']), true);
+  assert.equal(
+    isAllowedHost('files.oaiusercontent.com', ['chatgpt.com'], ['oaiusercontent.com']),
+    true,
+  );
+  assert.equal(
+    isAllowedHost('oaiusercontent.com.evil.example', ['chatgpt.com'], ['oaiusercontent.com']),
+    false,
+  );
 });

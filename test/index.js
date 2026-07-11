@@ -1,4 +1,5 @@
 require('./request.test');
+require('./assets.test');
 require('./ask.test');
 require('./cli.test');
 require('./cli-install.test');

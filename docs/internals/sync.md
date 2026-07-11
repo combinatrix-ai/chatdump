@@ -15,6 +15,10 @@
 7. Update stored timestamps
 ```
 
+Image-bearing conversations add an authenticated asset-materialization step
+between raw-cache writing and Markdown writing. See [images.md](images.md) for
+the storage, retry, and migration design.
+
 ## File Writing
 - **Writer** (`writer.js`) compares file content before writing — only overwrites if content has changed.
 - **Streaming**: Conversations are written **immediately** as they're fetched (via `onConversation` callback), not after all fetches complete.

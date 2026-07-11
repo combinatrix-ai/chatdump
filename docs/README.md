@@ -15,6 +15,8 @@ your Claude, ChatGPT, and Gemini conversations as plain Markdown.
   authentication, endpoints, deduplication, and JSON shapes.
 - [internals/sync.md](internals/sync.md) — the shared sync loop, file writing,
   and Markdown format all providers feed into.
+- [internals/images.md](internals/images.md) — offline image storage, ChatGPT
+  turn attribution, authenticated downloads, and archive migration.
 
 ## Releasing (maintainers)
 

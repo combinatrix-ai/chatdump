@@ -157,6 +157,9 @@ ChatGPT uses a **tree structure** with a `mapping` object:
 ```
 Messages are flattened by walking backward from `current_node` through `parent` links, then reversing the path. This matches the branch currently visible in the ChatGPT UI. Edited prompts create sibling branches in `mapping`; old branches remain in raw cache but are not included in Markdown unless they are on the current path.
 
+Structured image parts require turn attribution and authenticated local
+materialization beyond this text-only flattening. See [images.md](images.md).
+
 `message.update_time` exists in the response shape, but observed messages normally have `null` there, including edited messages. Edited messages are represented as new message nodes with new `create_time` values.
 
 ---

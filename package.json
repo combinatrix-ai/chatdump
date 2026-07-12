@@ -50,6 +50,8 @@
       "assets/iconTemplate@2x.png",
       "assets/iconTemplate-syncing.png",
       "assets/iconTemplate-syncing@2x.png",
+      "assets/iconTemplate-attention.png",
+      "assets/iconTemplate-attention@2x.png",
       "assets/providers/*.png",
       "package.json"
     ],

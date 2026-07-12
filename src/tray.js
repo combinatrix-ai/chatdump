@@ -675,6 +675,7 @@ async function clearSessionStorage(ses, label) {
 
 let idleIcon = null;
 let syncingIcon = null;
+let attentionIcon = null;
 
 function loadIcon(name) {
   const img = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', name));
@@ -684,12 +685,16 @@ function loadIcon(name) {
 
 function applyTrayIcon() {
   if (!tray) return;
-  tray.setImage(getSyncingCount() > 0 ? syncingIcon : idleIcon);
+  const needsAttention = getAccounts().some(
+    (account) => account.status === 'expired' || account.lastError,
+  );
+  tray.setImage(needsAttention ? attentionIcon : getSyncingCount() > 0 ? syncingIcon : idleIcon);
 }
 
 function createTray() {
   idleIcon = loadIcon('iconTemplate.png');
   syncingIcon = loadIcon('iconTemplate-syncing.png');
+  attentionIcon = loadIcon('iconTemplate-attention.png');
 
   tray = new Tray(idleIcon);
   buildMenu();

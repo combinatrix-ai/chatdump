@@ -12,6 +12,7 @@ const { app, dialog, session } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { chromeUserAgent } = require('./user-agent');
 const { createTray } = require('./tray');
 const {
   startScheduler,
@@ -25,6 +26,11 @@ const { getProvider } = require('./providers');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 const { startIpcServer, stopIpcServer } = require('./ipc-server');
 const { initUpdater, stopUpdater } = require('./updater');
+
+// Electron's default User-Agent identifies both Electron and this application.
+// Use the bundled Chromium major version so browser windows and net.request
+// resemble the corresponding stable Chrome release without a stale hard-coded UA.
+app.userAgentFallback = chromeUserAgent(process.versions.chrome);
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {

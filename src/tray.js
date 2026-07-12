@@ -7,6 +7,7 @@ const {
   removeAccount,
   updateAccount,
   getVaultPath,
+  getVaultBookmark,
 } = require('./store');
 const {
   syncAccount,
@@ -21,6 +22,7 @@ const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 const { getUpdateState, checkForUpdates, quitAndInstall } = require('./updater');
+const { countSavedChats } = require('./archive-stats');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -83,6 +85,8 @@ function buildMenu() {
 
   const accounts = getAccounts();
   const defaultVault = store.get('defaultVaultPath');
+  const chatCounts = new Map(accounts.map((account) => [account.id, getSavedChatCount(account)]));
+  const totalChatCount = [...chatCounts.values()].reduce((total, count) => total + count, 0);
 
   // --- Account items with submenu ---
   const accountItems = accounts.map((account) => {
@@ -107,6 +111,12 @@ function buildMenu() {
 
     // Build submenu items
     const sub = [];
+
+    sub.push({
+      label: `${formatChatCount(chatCounts.get(account.id) || 0)} chats saved`,
+      enabled: false,
+    });
+    sub.push({ type: 'separator' });
 
     // Error banner at top if there's an error
     if (account.lastError) {
@@ -466,7 +476,11 @@ function buildMenu() {
 
   // --- Build full menu ---
   const header = buildGlobalHeader(accounts);
-  const template = [{ label: header, enabled: false }, { type: 'separator' }];
+  const template = [
+    { label: header, enabled: false },
+    { label: `${formatChatCount(totalChatCount)} chats saved`, enabled: false },
+    { type: 'separator' },
+  ];
 
   if (accountItems.length > 0) {
     template.push(...accountItems);
@@ -625,6 +639,32 @@ function buildUpdateItem() {
 function shortenPath(p) {
   const home = require('node:os').homedir();
   return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+}
+
+function formatChatCount(count) {
+  return new Intl.NumberFormat().format(count);
+}
+
+function getSavedChatCount(account) {
+  const vaultPath = getVaultPath(account.id);
+  const provider = getProvider(account.provider);
+  if (!vaultPath || !provider) return 0;
+
+  let stopAccessing = null;
+  const bookmark = getVaultBookmark(account.id);
+  if (bookmark && typeof app.startAccessingSecurityScopedResource === 'function') {
+    try {
+      stopAccessing = app.startAccessingSecurityScopedResource(bookmark);
+    } catch {
+      return 0;
+    }
+  }
+
+  try {
+    return countSavedChats(vaultPath, provider.subdir, account.email || account.id);
+  } finally {
+    if (typeof stopAccessing === 'function') stopAccessing();
+  }
 }
 
 function getVaultBookmarkFromSelection(result) {

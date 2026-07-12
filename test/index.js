@@ -11,5 +11,7 @@ require('./mcp.test');
 require('./openai.test');
 require('./gemini.test');
 require('./claude.test');
+require('./archive-stats.test');
+require('./user-agent.test');
 require('./reparse.test');
 require('./writer.test');

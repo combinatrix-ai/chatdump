@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { atomicWriteFileSync } = require('./atomic-write');
 const { materializeConversationAssets } = require('./assets');
 const { readRawCache } = require('./cache');
 const { sanitizeAccountKey } = require('./path-utils');
@@ -71,17 +72,10 @@ async function reparseOutdated(vaultPath, provider, accountKey, options = {}) {
 
     if (regenerated === content) continue;
 
-    const tempPath = path.join(dir, `.${entry}.${process.pid}.${Date.now()}.tmp`);
     try {
-      fs.writeFileSync(tempPath, regenerated, 'utf-8');
-      fs.renameSync(tempPath, filePath);
+      atomicWriteFileSync(filePath, regenerated, 'utf-8');
       reparsed++;
     } catch (e) {
-      try {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      } catch {
-        /* ignore */
-      }
       console.error(`[reparse] write failed for ${fm.id}: ${e.message}`);
     }
   }

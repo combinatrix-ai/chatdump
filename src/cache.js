@@ -1,17 +1,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { atomicWriteFileSync } = require('./atomic-write');
 const { sanitizeAccountKey } = require('./path-utils');
-
-function sanitizeSegment(s) {
-  return sanitizeAccountKey(s);
-}
 
 function cacheDir(vaultPath, providerSubdir, accountKey) {
   return path.join(vaultPath, '.chatdump', 'cache', providerSubdir, sanitizeAccountKey(accountKey));
 }
 
 function cachePath(vaultPath, providerSubdir, accountKey, id) {
-  return path.join(cacheDir(vaultPath, providerSubdir, accountKey), `${sanitizeSegment(id)}.json`);
+  return path.join(
+    cacheDir(vaultPath, providerSubdir, accountKey),
+    `${sanitizeAccountKey(id)}.json`,
+  );
 }
 
 function writeRawCache(vaultPath, providerSubdir, accountKey, id, data) {
@@ -27,18 +27,7 @@ function writeRawCache(vaultPath, providerSubdir, accountKey, id, data) {
     if (existing === content) return false;
   }
 
-  const tempPath = path.join(dir, `.${sanitizeSegment(id)}.${process.pid}.${Date.now()}.tmp`);
-  try {
-    fs.writeFileSync(tempPath, content, 'utf-8');
-    fs.renameSync(tempPath, filePath);
-  } catch (e) {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch {
-      /* ignore cleanup failure */
-    }
-    throw e;
-  }
+  atomicWriteFileSync(filePath, content, 'utf-8');
   return true;
 }
 

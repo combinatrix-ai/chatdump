@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { atomicWriteFileSync } = require('./atomic-write');
 const { sanitizeAccountKey } = require('./path-utils');
 
 const MIME_EXTENSIONS = new Map([
@@ -122,18 +123,7 @@ function writeAsset(vaultPath, providerSubdir, accountKey, conversationId, asset
     detectedMime,
   );
   fs.mkdirSync(path.dirname(location.absolutePath), { recursive: true });
-  const tempPath = `${location.absolutePath}.${process.pid}.${Date.now()}.tmp`;
-  try {
-    fs.writeFileSync(tempPath, download.data);
-    fs.renameSync(tempPath, location.absolutePath);
-  } catch (e) {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch {
-      /* ignore cleanup failure */
-    }
-    throw e;
-  }
+  atomicWriteFileSync(location.absolutePath, download.data);
   return location.relativePath;
 }
 

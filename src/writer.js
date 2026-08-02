@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { atomicWriteFileSync } = require('./atomic-write');
 const { sanitizeAccountKey } = require('./path-utils');
 
 function writeConversation(vaultPath, providerSubdir, accountKey, filename, markdownContent) {
@@ -31,18 +32,7 @@ function writeConversation(vaultPath, providerSubdir, accountKey, filename, mark
     if (existing === markdownContent) return false;
   }
 
-  const tempPath = path.join(dir, `.${filename}.${process.pid}.${Date.now()}.tmp`);
-  try {
-    fs.writeFileSync(tempPath, markdownContent, 'utf-8');
-    fs.renameSync(tempPath, filePath);
-  } catch (e) {
-    try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-    } catch {
-      /* ignore cleanup failure */
-    }
-    throw e;
-  }
+  atomicWriteFileSync(filePath, markdownContent, 'utf-8');
   return true;
 }
 

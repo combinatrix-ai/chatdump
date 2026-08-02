@@ -3,7 +3,6 @@ const test = require('node:test');
 const { _test } = require('../src/providers/openai');
 
 const {
-  flattenMessages,
   extractDocument,
   getCurrentPathMessages,
   getLatestMessageCreateTime,
@@ -14,13 +13,7 @@ const {
   timestampToEpochMs,
   timestampToIso,
   validateAssetDownloadUrl,
-  getSyncWindowSinceDays,
 } = _test;
-
-test('sync window applies to first runs and defaults to 30 days', () => {
-  assert.equal(getSyncWindowSinceDays({}), 30);
-  assert.equal(getSyncWindowSinceDays({ sinceDays: 7 }), 7);
-});
 
 test('normalizeSharePayload keeps a mapping-shaped share payload', () => {
   const raw = {
@@ -157,29 +150,6 @@ test('getLatestMessageCreateTime picks the latest valid create_time', () => {
     '2025-01-02T03:04:05.000Z',
   );
   assert.equal(getLatestMessageCreateTime([{ create_time: null }]), '');
-});
-
-test('flattenMessages joins string parts and skips non-string or empty content', () => {
-  assert.deepEqual(
-    flattenMessages([
-      {
-        author: { role: 'user' },
-        content: { parts: ['first', { ignored: true }, 'second'] },
-      },
-      {
-        author: { role: 'assistant' },
-        content: { parts: ['   '] },
-      },
-      {
-        author: { role: 'assistant' },
-        content: { parts: ['answer'] },
-      },
-    ]),
-    [
-      { role: 'user', text: 'first\n\nsecond' },
-      { role: 'assistant', text: 'answer' },
-    ],
-  );
 });
 
 test('extractDocument keeps uploaded images in user part order', () => {

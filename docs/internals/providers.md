@@ -72,8 +72,7 @@ chatdump fetches conversations from three AI chat providers. Each has a differen
 ### Endpoints
 | Purpose | Method | URL |
 |---|---|---|
-| Session / token | GET | `/api/auth/session` |
-| Account info | GET | `/backend-api/me` (with Bearer token) |
+| Session / account info | GET | `/api/auth/session` |
 | Conversation list | GET | `/backend-api/conversations?offset={n}&limit=100` |
 | Single conversation | GET | `/backend-api/conversation/{id}` (with Bearer token) |
 | Shared conversation | GET | `/backend-api/share/{share_id}` (public snapshot; owner not required) |

@@ -37,12 +37,6 @@ const provider = {
     return raw;
   },
 
-  // Extract account info from cookies
-  parseAccountFromCookies(_cookies) {
-    // No reliable email in cookies for Gemini — will be filled from page HTML
-    return { email: '', name: '', plan: '' };
-  },
-
   async getAccountInfo(ses) {
     // Fetch the app page and extract email from HTML
     try {

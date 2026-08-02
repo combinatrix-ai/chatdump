@@ -1,14 +1,16 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { _test } = require('../src/providers/request');
+const {
+  _test,
+  isAuthExpiredError,
+  isRequestAbortedError,
+  shouldRethrowProviderError,
+} = require('../src/providers/request');
 
 const {
   createUtf8Accumulator,
   isAllowedHost,
-  isAuthExpiredError,
-  isRequestAbortedError,
   redactedHeaders,
-  shouldRethrowProviderError,
 } = _test;
 
 test('provider control-flow errors are classified consistently', () => {

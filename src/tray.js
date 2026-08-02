@@ -421,9 +421,6 @@ function buildMenu() {
               info = prov.parseAccountInfo(result.accountInfo);
             }
             // Strategy 2: Parse from cookies directly
-            console.log(
-              `[tray] result.cookies keys: ${Object.keys(result.cookies || {}).join(', ')}`,
-            );
             if (!info?.email && result.cookies && prov.parseAccountFromCookies) {
               const cookieInfo = prov.parseAccountFromCookies(result.cookies);
               if (cookieInfo.email || cookieInfo.name) {

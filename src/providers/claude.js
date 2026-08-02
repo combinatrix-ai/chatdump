@@ -59,7 +59,7 @@ const provider = {
     const orgs = await makeRequest(`${BASE}/api/organizations`, ses, undefined, {
       signal: options.signal,
     });
-    if (!orgs || orgs.length === 0) return [];
+    if (!orgs || orgs.length === 0) return { failed: [] };
     const orgId = orgs[0].uuid;
 
     const conversations = await makeRequest(

@@ -10,10 +10,6 @@ const { sanitizeFilenameTitle } = require('../path-utils');
 
 const BASE = 'https://chatgpt.com';
 
-function getSyncWindowSinceDays(options = {}) {
-  return options.sinceDays ?? 30;
-}
-
 const provider = {
   name: 'openai',
   displayName: 'ChatGPT',
@@ -63,7 +59,7 @@ const provider = {
   },
 
   async getAccountInfo(ses) {
-    // Try to get access token from /api/auth/session, then hit /backend-api/me
+    // Get account info from /api/auth/session.
     try {
       const authSession = await makeRequest(`${BASE}/api/auth/session`, ses);
       const email = authSession?.user?.email || '';
@@ -201,9 +197,9 @@ const provider = {
     let allConvs = [];
     let offset = 0;
     const limit = 100;
-    const sinceDays = getSyncWindowSinceDays(options);
-    const cutoffMs = sinceDays != null ? Date.now() - sinceDays * 86400000 : 0;
-    const listingCutoffMs = mode === 'sync' && sinceDays != null ? cutoffMs : 0;
+    const sinceDays = options.sinceDays;
+    const cutoffMs = sinceDays === undefined ? 0 : Date.now() - sinceDays * 86400000;
+    const listingCutoffMs = mode === 'sync' ? cutoffMs : 0;
     const listingCutoffIso = listingCutoffMs ? new Date(listingCutoffMs).toISOString() : '';
     let listedPages = 0;
 
@@ -211,7 +207,7 @@ const provider = {
     // it returns offset+items.length+1 while more pages exist, only becoming the real
     // count on the final page. Don't display it as a denominator.
     while (true) {
-      if (options.signal?.aborted) return [];
+      if (options.signal?.aborted) return { failed: [] };
       await new Promise((r) => setTimeout(r, 1000));
       const page = await withRetry(
         () =>
@@ -286,7 +282,7 @@ const provider = {
         return !last || last !== current;
       });
       toFetch = filtered.reverse();
-      const windowLabel = sinceDays != null ? `last ${sinceDays}d` : 'all time';
+      const windowLabel = `last ${sinceDays}d`;
       console.log(
         `[openai] sync mode (${windowLabel}): ${toFetch.length}/${allConvs.length} to fetch`,
       );
@@ -567,18 +563,6 @@ function timestampToEpochMs(value) {
   return Number.isNaN(ms) ? null : ms;
 }
 
-function flattenMessages(messages) {
-  return extractDocument(messages)
-    .turns.map((turn) => {
-      const text = turn.parts
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join('\n\n');
-      return text.trim() ? { role: turn.role, text } : null;
-    })
-    .filter(Boolean);
-}
-
 function assetFromPart(part) {
   if (!part || typeof part !== 'object' || part.content_type !== 'image_asset_pointer') {
     return null;
@@ -727,14 +711,12 @@ provider._test = {
   getLatestMessageCreateTime,
   timestampToEpochMs,
   timestampToIso,
-  flattenMessages,
   extractDocument,
   renderTurns,
   assetFromPart,
   parseAssetPointer,
   validateAssetDownloadUrl,
   sanitize: sanitizeFilenameTitle,
-  getSyncWindowSinceDays,
   normalizeSharePayload,
 };
 

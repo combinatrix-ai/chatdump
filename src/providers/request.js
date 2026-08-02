@@ -538,8 +538,5 @@ module.exports = {
     createUtf8Accumulator,
     isAllowedHost,
     redactedHeaders,
-    isAuthExpiredError,
-    isRequestAbortedError,
-    shouldRethrowProviderError,
   },
 };

@@ -1,4 +1,10 @@
-const { makeBinaryRequest, makeRequest } = require('./request');
+const {
+  isAuthExpiredError,
+  isRequestAbortedError,
+  makeBinaryRequest,
+  makeRequest,
+  shouldRethrowProviderError,
+} = require('./request');
 const { withRetry } = require('./retry');
 
 const BASE = 'https://chatgpt.com';
@@ -95,7 +101,7 @@ const provider = {
       });
       return authSession?.accessToken || null;
     } catch (e) {
-      if (options.signal?.aborted || e.message === 'Request aborted') throw e;
+      if (options.signal?.aborted || isRequestAbortedError(e)) throw e;
       return null;
     }
   },
@@ -162,7 +168,7 @@ const provider = {
       });
       resolverReturnedJson = true;
     } catch (e) {
-      if (e.message === 'AUTH_EXPIRED' || e.message === 'Request aborted') throw e;
+      if (isAuthExpiredError(e) || isRequestAbortedError(e)) throw e;
     }
     const downloadUrl = resolved?.download_url || resolved?.url;
     if (downloadUrl) {
@@ -180,7 +186,7 @@ const provider = {
       try {
         return await makeBinaryRequest(fileUrl, ses, headers, requestOptions);
       } catch (e) {
-        if (e.message === 'AUTH_EXPIRED' || e.message === 'Request aborted') throw e;
+        if (isAuthExpiredError(e) || isRequestAbortedError(e)) throw e;
         if (e.statusCode && ![404, 405].includes(e.statusCode)) throw e;
       }
     }
@@ -332,7 +338,8 @@ const provider = {
           const newToken = await provider.getAccessToken(ses, { signal: options.signal });
           if (newToken) token = newToken;
           console.log(`[openai] Refreshed access token at item ${i}`);
-        } catch {
+        } catch (e) {
+          if (shouldRethrowProviderError(e, options.signal)) throw e;
           /* keep old token */
         }
       }
@@ -378,6 +385,7 @@ const provider = {
         consecutiveFails = 0;
         delay = Math.max(minDelay, delay * 0.95); // Slowly ease back
       } catch (e) {
+        if (shouldRethrowProviderError(e, options.signal)) throw e;
         console.error(`[openai] Failed ${conv.id}: ${e.message}`);
       }
 
@@ -401,7 +409,8 @@ const provider = {
         try {
           const newToken = await provider.getAccessToken(ses, { signal: options.signal });
           if (newToken) token = newToken;
-        } catch {
+        } catch (e) {
+          if (shouldRethrowProviderError(e, options.signal)) throw e;
           /* keep old */
         }
       }

@@ -23,6 +23,7 @@ const { getRecentLogs, openLogFile } = require('./synclog');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
 const { getUpdateState, checkForUpdates, quitAndInstall } = require('./updater');
 const { countSavedChats } = require('./archive-stats');
+const { getTrayIconState } = require('./tray-state');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -725,10 +726,8 @@ function loadIcon(name) {
 
 function applyTrayIcon() {
   if (!tray) return;
-  const needsAttention = getAccounts().some(
-    (account) => account.status === 'expired' || account.lastError,
-  );
-  tray.setImage(needsAttention ? attentionIcon : getSyncingCount() > 0 ? syncingIcon : idleIcon);
+  const icons = { idle: idleIcon, syncing: syncingIcon, attention: attentionIcon };
+  tray.setImage(icons[getTrayIconState(getAccounts(), getSyncingCount())]);
 }
 
 function createTray() {

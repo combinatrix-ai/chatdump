@@ -23,6 +23,21 @@ function createAuthExpiredError(statusCode) {
   return error;
 }
 
+// Provider sync treats authentication expiry and an explicit request abort as
+// control-flow errors. Keep the checks in one place so per-conversation loops
+// do not accidentally turn either condition into a successful partial sync.
+function isAuthExpiredError(error) {
+  return error?.message === 'AUTH_EXPIRED';
+}
+
+function isRequestAbortedError(error) {
+  return error?.message === 'Request aborted';
+}
+
+function shouldRethrowProviderError(error, signal) {
+  return Boolean(signal?.aborted) || isAuthExpiredError(error) || isRequestAbortedError(error);
+}
+
 function getHeader(responseHeaders, name) {
   const lowerName = name.toLowerCase();
   const key = Object.keys(responseHeaders || {}).find((k) => k.toLowerCase() === lowerName);
@@ -516,5 +531,15 @@ module.exports = {
   makeBinaryRequest,
   makeRawRequest,
   makeRawPostRequest,
-  _test: { createUtf8Accumulator, isAllowedHost, redactedHeaders },
+  isAuthExpiredError,
+  isRequestAbortedError,
+  shouldRethrowProviderError,
+  _test: {
+    createUtf8Accumulator,
+    isAllowedHost,
+    redactedHeaders,
+    isAuthExpiredError,
+    isRequestAbortedError,
+    shouldRethrowProviderError,
+  },
 };

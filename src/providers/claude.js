@@ -1,4 +1,4 @@
-const { makeRequest } = require('./request');
+const { makeRequest, shouldRethrowProviderError } = require('./request');
 
 const BASE = 'https://claude.ai';
 
@@ -100,6 +100,7 @@ const provider = {
         await onConversation?.(full);
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {
+        if (shouldRethrowProviderError(e, options.signal)) throw e;
         console.error(`[claude] Failed ${conv.uuid}: ${e.message}`);
       }
     }

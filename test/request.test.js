@@ -2,7 +2,32 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { _test } = require('../src/providers/request');
 
-const { createUtf8Accumulator, isAllowedHost, redactedHeaders } = _test;
+const {
+  createUtf8Accumulator,
+  isAllowedHost,
+  isAuthExpiredError,
+  isRequestAbortedError,
+  redactedHeaders,
+  shouldRethrowProviderError,
+} = _test;
+
+test('provider control-flow errors are classified consistently', () => {
+  const authExpired = new Error('AUTH_EXPIRED');
+  const requestAborted = new Error('Request aborted');
+  const ordinary = new Error('conversation failed');
+
+  assert.equal(isAuthExpiredError(authExpired), true);
+  assert.equal(isAuthExpiredError(ordinary), false);
+  assert.equal(isRequestAbortedError(requestAborted), true);
+  assert.equal(isRequestAbortedError(ordinary), false);
+  assert.equal(shouldRethrowProviderError(authExpired), true);
+  assert.equal(shouldRethrowProviderError(requestAborted), true);
+  assert.equal(shouldRethrowProviderError(ordinary), false);
+
+  const controller = new AbortController();
+  controller.abort();
+  assert.equal(shouldRethrowProviderError(ordinary, controller.signal), true);
+});
 
 function decodeInTwoChunks(input, offset) {
   const bytes = Buffer.from(input);

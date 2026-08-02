@@ -1,4 +1,4 @@
-const { makeRawPostRequest, makeRawRequest } = require('./request');
+const { makeRawPostRequest, makeRawRequest, shouldRethrowProviderError } = require('./request');
 const { withRetry } = require('./retry');
 
 const BASE = 'https://gemini.google.com';
@@ -90,7 +90,8 @@ const provider = {
           conversations.push(p);
         }
       }
-    } catch {
+    } catch (e) {
+      if (shouldRethrowProviderError(e, options.signal)) throw e;
       /* ignore */
     }
 
@@ -134,6 +135,7 @@ const provider = {
         await onConversation?.(full);
         timestamps[conv.id] = conv.timestamp;
       } catch (e) {
+        if (shouldRethrowProviderError(e, options.signal)) throw e;
         console.error(`[gemini] Failed ${conv.id}: ${e.message}`);
       }
     }
@@ -190,7 +192,7 @@ async function getPageTokens(ses, signal) {
     const sid = (html.match(/"FdrFJe":"([^"]+)"/) || [])[1] || '';
     return { at, bl, sid };
   } catch (e) {
-    if (signal?.aborted || e.message === 'Request aborted') throw e;
+    if (shouldRethrowProviderError(e, signal)) throw e;
     console.error('[gemini] Failed to get page tokens:', e.message);
     return { at: '', bl: '', sid: '' };
   }
@@ -259,7 +261,7 @@ async function fetchConversationListPages(ses, tokens, signal) {
         throw new Error('Gemini list response format changed — no MaZiqc frame found');
       }
     } catch (e) {
-      if (page === 1) throw e;
+      if (shouldRethrowProviderError(e, signal) || page === 1) throw e;
       console.error(`[gemini] Failed to fetch list page ${page}: ${e.message}`);
       break;
     }

@@ -1,0 +1,12 @@
+.claude/
+.codex/
+.DS_Store
+.env
+.env.local
+dist/
+dist-electron/
+node_modules/
+raw/
+*.dmg
+*.log
+*.zip

@@ -24,7 +24,7 @@ const providers = {
   },
 };
 
-test('selectAskAccount defaults to enabled ChatGPT account', () => {
+test('selectAskAccount defaults to the first ChatGPT account regardless of auto-sync', () => {
   const accounts = [
     { id: 'openai:disabled@example.com', provider: 'openai', autoSync: false },
     { id: 'openai:user@example.com', provider: 'openai', autoSync: true },
@@ -32,7 +32,7 @@ test('selectAskAccount defaults to enabled ChatGPT account', () => {
 
   const account = selectAskAccount({}, makeStore(accounts), providers);
 
-  assert.equal(account.id, 'openai:user@example.com');
+  assert.equal(account.id, 'openai:disabled@example.com');
 });
 
 test('selectAskAccount rejects providers without browser ask support', () => {

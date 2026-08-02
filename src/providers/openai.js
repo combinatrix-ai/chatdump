@@ -6,8 +6,13 @@ const {
   shouldRethrowProviderError,
 } = require('./request');
 const { withRetry } = require('./retry');
+const { sanitizeFilenameTitle } = require('../path-utils');
 
 const BASE = 'https://chatgpt.com';
+
+function getSyncWindowSinceDays(options = {}) {
+  return options.sinceDays ?? 30;
+}
 
 const provider = {
   name: 'openai',
@@ -23,14 +28,6 @@ const provider = {
 
   getId(conversation) {
     return conversation?.conversation_id || conversation?.id || '';
-  },
-
-  getRawCache(conversation) {
-    return conversation;
-  },
-
-  parseFromCache(raw) {
-    return raw;
   },
 
   extractDocument(conversation) {
@@ -63,11 +60,6 @@ const provider = {
     }
 
     return { email, name, plan };
-  },
-
-  parseAccountInfo(_data) {
-    // Not used — we use parseAccountFromCookies
-    return null;
   },
 
   async getAccountInfo(ses) {
@@ -209,10 +201,9 @@ const provider = {
     let allConvs = [];
     let offset = 0;
     const limit = 100;
-    const isFirstRun = Object.keys(timestamps).length === 0;
-    const sinceDays = isFirstRun ? null : (options.sinceDays ?? 30);
+    const sinceDays = getSyncWindowSinceDays(options);
     const cutoffMs = sinceDays != null ? Date.now() - sinceDays * 86400000 : 0;
-    const listingCutoffMs = mode === 'sync' && options.sinceDays != null ? cutoffMs : 0;
+    const listingCutoffMs = mode === 'sync' && sinceDays != null ? cutoffMs : 0;
     const listingCutoffIso = listingCutoffMs ? new Date(listingCutoffMs).toISOString() : '';
     let listedPages = 0;
 
@@ -281,9 +272,9 @@ const provider = {
         `[openai] full-sync mode: touching all ${toFetch.length} conversations by ${sortKey} ascending`,
       );
     } else {
-      // Sync mode: window-bounded diff fetch. On the very first run (no stored
-      // timestamps) we ignore the window and let the user kick off a full sync
-      // explicitly via the menu.
+      // Sync mode: window-bounded diff fetch. Full history is opt-in via the
+      // explicit full-sync modes above; the configured window also applies on
+      // the first run.
       // Reverse the API-returned order (update_time DESC) so we read oldest-touched
       // first. Each read bumps update_time on the server, so walking oldest→newest
       // means the final touched conversation ends up topmost — chatgpt.com sidebar
@@ -301,6 +292,7 @@ const provider = {
       );
     }
     let fetchedCount = 0;
+    const failed = [];
 
     // ChatGPT (via Cloudflare) does not return Retry-After on 429, so we can't react
     // smartly — only stay below the threshold. 10s base + ±20% jitter avoids the
@@ -386,6 +378,7 @@ const provider = {
         delay = Math.max(minDelay, delay * 0.95); // Slowly ease back
       } catch (e) {
         if (shouldRethrowProviderError(e, options.signal)) throw e;
+        failed.push({ id: conv.id, error: e.message });
         console.error(`[openai] Failed ${conv.id}: ${e.message}`);
       }
 
@@ -415,7 +408,7 @@ const provider = {
         }
       }
     }
-    return []; // Conversations already written via onConversation callback
+    return { failed }; // Conversations already written via onConversation callback
   },
 
   async askWithBrowser(ses, options = {}) {
@@ -459,7 +452,7 @@ const provider = {
     const created =
       timestampToIso(conversation.create_time).slice(0, 10) ||
       new Date().toISOString().slice(0, 10);
-    const title = sanitize(conversation.title || 'untitled');
+    const title = sanitizeFilenameTitle(conversation.title || 'untitled');
     const idSuffix = (conversation.conversation_id || conversation.id || '').slice(0, 8);
     return `${created}_${title}_${idSuffix}.md`;
   },
@@ -729,13 +722,6 @@ function renderTurns(turns, assetPaths = {}) {
     .join('\n\n');
 }
 
-function sanitize(name) {
-  return name
-    .replace(/[/\\:*?"<>|]/g, '_')
-    .replace(/\s+/g, '_')
-    .slice(0, 80);
-}
-
 provider._test = {
   getCurrentPathMessages,
   getLatestMessageCreateTime,
@@ -747,7 +733,8 @@ provider._test = {
   assetFromPart,
   parseAssetPointer,
   validateAssetDownloadUrl,
-  sanitize,
+  sanitize: sanitizeFilenameTitle,
+  getSyncWindowSinceDays,
   normalizeSharePayload,
 };
 

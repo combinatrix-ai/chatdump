@@ -13,6 +13,7 @@ const {
   syncAccount,
   syncAll,
   stopSync,
+  waitForSyncStop,
   isSyncing,
   getAccountProgress,
   getSyncingCount,
@@ -21,9 +22,11 @@ const { openLoginWindow, getSession } = require('./auth');
 const { allProviders, getProvider } = require('./providers');
 const { getRecentLogs, openLogFile } = require('./synclog');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
+const { showCliInstallResult } = require('./cli-install-ui');
 const { getUpdateState, checkForUpdates, quitAndInstall } = require('./updater');
 const { countSavedChats } = require('./archive-stats');
 const { getTrayIconState } = require('./tray-state');
+const { removeAccountSafely } = require('./account-removal');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -222,21 +225,10 @@ function buildMenu() {
     sub.push({
       label: 'Set Vault Path...',
       click: async () => {
-        if (process.platform === 'darwin') app.dock?.show();
-        try {
-          const focusWin = new BrowserWindow({ show: false });
-          const result = await dialog.showOpenDialog(focusWin, {
-            properties: ['openDirectory'],
-            title: `Select vault for ${displayName}: ${label}`,
-            securityScopedBookmarks: true,
-          });
-          focusWin.destroy();
-          if (!result.canceled && result.filePaths.length > 0) {
-            updateAccount(account.id, buildVaultSelection(result));
-            buildMenu();
-          }
-        } finally {
-          if (process.platform === 'darwin') app.dock?.hide();
+        const result = await pickDirectory(`Select vault for ${displayName}: ${label}`);
+        if (!result.canceled && result.filePaths.length > 0) {
+          updateAccount(account.id, buildVaultSelection(result));
+          buildMenu();
         }
       },
     });
@@ -327,9 +319,25 @@ function buildMenu() {
     });
     sub.push({
       label: 'Remove Account',
-      click: () => {
-        removeAccount(account.id);
-        buildMenu();
+      click: async () => {
+        const result = await removeAccountSafely(account, {
+          stopSync,
+          waitForSyncStop,
+          getSession,
+          removeAccount,
+          updateAccount,
+          logger: (message) => console.log(message),
+        });
+        if (result.ok) {
+          buildMenu();
+          return;
+        }
+        await dialog.showMessageBox({
+          type: 'error',
+          title: 'Could not remove account',
+          message: `Could not remove ${label}`,
+          detail: result.error,
+        });
       },
     });
 
@@ -435,6 +443,8 @@ function buildMenu() {
           if (info?.email) {
             const realId = `${prov.name}:${info.email}`;
             // Remove temp entry, create proper one
+            await clearSessionStorage(getSession(accountId), accountId);
+            persistSes = null;
             removeAccount(accountId);
 
             // Re-copy cookies to the real account partition
@@ -494,7 +504,7 @@ function buildMenu() {
   template.push({
     label: 'Sync All Now',
     enabled: accountItems.length > 0,
-    click: () => syncAll(onStatus, { includeDisabled: true }),
+    click: () => syncAll(onStatus),
   });
 
   const intervalMinutes = store.get('syncIntervalMinutes') || 180;
@@ -529,23 +539,12 @@ function buildMenu() {
   template.push({
     label: 'Set Default Vault...',
     click: async () => {
-      if (process.platform === 'darwin') app.dock?.show();
-      try {
-        const focusWin = new BrowserWindow({ show: false });
-        const result = await dialog.showOpenDialog(focusWin, {
-          properties: ['openDirectory'],
-          title: 'Select Default Vault',
-          securityScopedBookmarks: true,
-        });
-        focusWin.destroy();
-        if (!result.canceled && result.filePaths.length > 0) {
-          store.set('defaultVaultPath', result.filePaths[0]);
-          const bookmark = getVaultBookmarkFromSelection(result);
-          if (bookmark) store.set('defaultVaultBookmark', bookmark);
-          buildMenu();
-        }
-      } finally {
-        if (process.platform === 'darwin') app.dock?.hide();
+      const result = await pickDirectory('Select Default Vault');
+      if (!result.canceled && result.filePaths.length > 0) {
+        store.set('defaultVaultPath', result.filePaths[0]);
+        const bookmark = getVaultBookmarkFromSelection(result);
+        if (bookmark) store.set('defaultVaultBookmark', bookmark);
+        buildMenu();
       }
     },
   });
@@ -572,21 +571,7 @@ function buildMenu() {
         label: 'Install Command Line Tool…',
         click: async () => {
           const result = await installCliTool();
-          if (result.ok) {
-            await dialog.showMessageBox({
-              type: 'info',
-              title: 'chatdump command installed',
-              message: 'chatdump command installed',
-              detail: `chatdump command installed at ${result.path}. Try: chatdump cli list`,
-            });
-          } else if (result.reason !== 'cancelled') {
-            await dialog.showMessageBox({
-              type: 'error',
-              title: 'Could not install chatdump command',
-              message: 'Could not install chatdump command',
-              detail: result.message || 'Unknown error',
-            });
-          }
+          await showCliInstallResult(dialog, result);
           buildMenu();
         },
       });
@@ -630,10 +615,17 @@ function buildUpdateItem() {
   if (update.status === 'checking') {
     return { label: 'Checking for Updates…', enabled: false };
   }
+  if (update.status === 'error') {
+    return {
+      label: `⚠️ Update check failed: ${truncateMenuText(update.error, 70)}`,
+      enabled: update.supported,
+      click: () => checkForUpdates(),
+    };
+  }
   return {
     label: 'Check for Updates…',
     enabled: update.supported,
-    click: () => checkForUpdates({ interactive: true }),
+    click: () => checkForUpdates(),
   };
 }
 
@@ -672,6 +664,22 @@ function getVaultBookmarkFromSelection(result) {
   return result.bookmarks?.[0] || '';
 }
 
+async function pickDirectory(title) {
+  if (process.platform === 'darwin') app.dock?.show();
+  let focusWin = null;
+  try {
+    focusWin = new BrowserWindow({ show: false });
+    return await dialog.showOpenDialog(focusWin, {
+      properties: ['openDirectory'],
+      title,
+      securityScopedBookmarks: true,
+    });
+  } finally {
+    if (focusWin && !focusWin.isDestroyed()) focusWin.destroy();
+    if (process.platform === 'darwin') app.dock?.hide();
+  }
+}
+
 function buildVaultSelection(result) {
   const update = { vaultPath: result.filePaths[0] };
   const bookmark = getVaultBookmarkFromSelection(result);
@@ -708,9 +716,11 @@ async function copyProviderCookies(cookies, targetSession, targetLabel) {
 async function clearSessionStorage(ses, label) {
   try {
     await ses.clearStorageData();
-    console.log(`[tray] Cleared temporary session storage for ${label}`);
+    console.log(`[tray] Cleared session storage for ${label}`);
+    return true;
   } catch (e) {
-    console.log(`[tray] Could not clear temporary session storage for ${label}: ${e.message}`);
+    console.log(`[tray] Could not clear session storage for ${label}: ${e.message}`);
+    return false;
   }
 }
 

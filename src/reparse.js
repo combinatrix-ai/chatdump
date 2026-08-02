@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { materializeConversationAssets } = require('./assets');
 const { readRawCache } = require('./cache');
+const { sanitizeAccountKey } = require('./path-utils');
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
 
@@ -22,10 +23,6 @@ function parseFrontmatter(text) {
     fields[m[1]] = value;
   }
   return fields;
-}
-
-function sanitizeAccountKey(accountKey) {
-  return String(accountKey).replace(/[/\\:*?"<>|]/g, '_');
 }
 
 async function reparseOutdated(vaultPath, provider, accountKey, options = {}) {

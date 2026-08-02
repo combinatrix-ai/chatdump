@@ -16,7 +16,7 @@ For the plain command-line interface (`list`, `sync`), see [cli.md](cli.md).
 ```sh
 chatdump mcp
 # or, without the PATH command:
-/Applications/chatdump.app/Contents/MacOS/chatdump cli mcp
+/Applications/chatdump.app/Contents/MacOS/chatdump mcp
 # or, from source:
 npm run mcp
 ```
@@ -28,14 +28,14 @@ Project-scoped MCP client configuration:
   "mcpServers": {
     "chatdump": {
       "command": "/Applications/chatdump.app/Contents/MacOS/chatdump",
-      "args": ["cli", "mcp"]
+      "args": ["mcp"]
     }
   }
 }
 ```
 
 If you have installed the `chatdump` PATH command, you can use
-`"command": "chatdump", "args": ["cli", "mcp"]` instead of the full app path.
+`"command": "chatdump", "args": ["mcp"]` instead of the full app path.
 
 ## Tools
 
@@ -44,7 +44,7 @@ If you have installed the `chatdump` PATH command, you can use
 | `ask` | Ask a question through chatdump's persisted browser session. Currently supports ChatGPT. Returns `answer`, `conversationId`, `url`, `accountId`, `provider`. |
 | `conversation` | Fetch a full conversation as Markdown. Accepts a conversation id, a `chatgpt.com/c/<id>` URL, or a public `chatgpt.com/share/<id>` link. |
 | `accounts` | List configured accounts and their sync status. |
-| `sync` | Sync selected accounts to their vault folders. |
+| `sync` | Sync configured accounts to their vault folders. `sinceDays` and `fullSync` are ChatGPT-only; mixed or non-ChatGPT selections fail before syncing. |
 
 ### `conversation` arguments
 

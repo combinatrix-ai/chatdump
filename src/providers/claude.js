@@ -1,4 +1,5 @@
 const { makeRequest, shouldRethrowProviderError } = require('./request');
+const { sanitizeFilenameTitle } = require('../path-utils');
 
 const BASE = 'https://claude.ai';
 
@@ -15,14 +16,6 @@ const provider = {
 
   getId(conversation) {
     return conversation?.uuid || '';
-  },
-
-  getRawCache(conversation) {
-    return conversation;
-  },
-
-  parseFromCache(raw) {
-    return raw;
   },
 
   parseAccountInfo(bootstrap) {
@@ -81,6 +74,7 @@ const provider = {
     });
 
     console.log(`[claude] ${toFetch.length}/${conversations.length} to fetch`);
+    const failed = [];
 
     for (let i = 0; i < toFetch.length; i++) {
       if (options.signal?.aborted) {
@@ -101,10 +95,11 @@ const provider = {
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {
         if (shouldRethrowProviderError(e, options.signal)) throw e;
+        failed.push({ id: conv.uuid, error: e.message });
         console.error(`[claude] Failed ${conv.uuid}: ${e.message}`);
       }
     }
-    return [];
+    return { failed };
   },
 
   convertToMarkdown(conversation) {
@@ -141,7 +136,7 @@ const provider = {
 
   makeFilename(conversation) {
     const date = (conversation.created_at || new Date().toISOString()).slice(0, 10);
-    const title = sanitize(conversation.name || 'untitled');
+    const title = sanitizeFilenameTitle(conversation.name || 'untitled');
     const idSuffix = (conversation.uuid || '').slice(0, 8);
     return `${date}_${title}_${idSuffix}.md`;
   },
@@ -165,13 +160,6 @@ function extractText(content) {
       .join('\n\n');
   }
   return JSON.stringify(content);
-}
-
-function sanitize(name) {
-  return name
-    .replace(/[/\\:*?"<>|]/g, '_')
-    .replace(/\s+/g, '_')
-    .slice(0, 80);
 }
 
 provider._test = { extractText };

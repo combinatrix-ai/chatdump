@@ -24,22 +24,20 @@ If you'd rather not install it (or you are on the Mac App Store build, where
 this is unavailable), call the binary inside the app bundle directly:
 
 ```sh
-/Applications/chatdump.app/Contents/MacOS/chatdump cli <command> [options]
+/Applications/chatdump.app/Contents/MacOS/chatdump <command> [options]
 ```
 
 When running from source, use `npm run cli -- <command> [options]`.
 
-> The examples below use the bare `chatdump <command>` form. If you have not
-> installed the PATH command, prefix them with
-> `/Applications/chatdump.app/Contents/MacOS/chatdump cli`.
+> The examples below use the bare `chatdump <command>` form.
 
 ## Commands
 
 | Command | Description |
 |---|---|
 | `help` | Print usage. |
-| `list` (alias `accounts`) | List configured accounts and their sync status. |
-| `sync` | Sync selected accounts to their configured vault folders. |
+| `list` | List configured accounts and their sync status. |
+| `sync` | Sync all configured accounts (or selected filters) to their configured vault folders. |
 | `fetch` | Fetch one conversation or shared ChatGPT link and print Markdown. |
 | `mcp` | Start the stdio MCP server — see [mcp.md](mcp.md). |
 
@@ -59,21 +57,20 @@ chatdump sync [options]
 
 | Option | Description |
 |---|---|
-| `--all` | Sync every enabled account. |
-| `--include-disabled` | Also sync accounts with auto-sync turned off. |
+| *(no selector)* | Sync every configured account. Auto-sync only affects scheduled syncs. |
 | `--account <id>` | Sync a specific account (repeatable), e.g. `openai:user@example.com`. |
 | `--provider <name>` | Limit to one provider (`openai`, `claude`, `gemini`). |
-| `--since-days <days>` | Only consider conversations updated within the window. |
-| `--full-sync <created_at\|last_message_at>` | Re-touch every conversation to reorder the provider sidebar by the chosen key. |
+| `--since-days <days>` | Only consider ChatGPT conversations created within the recent window. Rejects Claude/Gemini selections. |
+| `--full-sync <created_at\|last_message_at>` | Re-touch every ChatGPT conversation to reorder the provider sidebar by the chosen key. Rejects Claude/Gemini selections. |
 | `--json` | Machine-readable output. |
 
 Examples:
 
 ```sh
 chatdump list
-chatdump sync --all
+chatdump sync
 chatdump sync --account openai:user@example.com --since-days 7
-chatdump sync --provider claude --full-sync last_message_at
+chatdump sync --provider claude
 ```
 
 ### `fetch`

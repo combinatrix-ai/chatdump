@@ -14,7 +14,13 @@ const {
   timestampToEpochMs,
   timestampToIso,
   validateAssetDownloadUrl,
+  getSyncWindowSinceDays,
 } = _test;
+
+test('sync window applies to first runs and defaults to 30 days', () => {
+  assert.equal(getSyncWindowSinceDays({}), 30);
+  assert.equal(getSyncWindowSinceDays({ sinceDays: 7 }), 7);
+});
 
 test('normalizeSharePayload keeps a mapping-shaped share payload', () => {
   const raw = {

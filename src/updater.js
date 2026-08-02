@@ -54,14 +54,9 @@ function wireEvents() {
   });
 }
 
-// Kick off a check. `interactive` is set from the manual "Check for Updates…"
-// menu item so we can surface "up to date" instead of silently going idle.
-async function checkForUpdates({ interactive = false } = {}) {
-  if (!isSupported()) {
-    if (interactive)
-      setState({ status: 'error', error: 'Updates are only available in the packaged app.' });
-    return;
-  }
+// Kick off an update check. Unsupported builds simply have no update action.
+async function checkForUpdates() {
+  if (!isSupported()) return;
   wireEvents();
   try {
     await autoUpdater.checkForUpdates();

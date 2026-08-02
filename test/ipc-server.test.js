@@ -11,10 +11,29 @@ const {
     handleMcpAsk,
     handleMcpConversation,
     handleMcpSync,
+    validateProviderSyncOptions,
     validateMcpSyncInput,
     dispatch,
   },
 } = require('../src/ipc-server');
+
+test('sync window options reject non-ChatGPT or mixed providers before syncing', () => {
+  assert.throws(
+    () => validateProviderSyncOptions([{ id: 'claude:b', provider: 'claude' }], { sinceDays: 7 }),
+    /only supported for ChatGPT/,
+  );
+  assert.throws(
+    () =>
+      validateProviderSyncOptions(
+        [
+          { id: 'openai:a', provider: 'openai' },
+          { id: 'gemini:b', provider: 'gemini' },
+        ],
+        { mode: 'full-sync:created_at' },
+      ),
+    /only supported for ChatGPT/,
+  );
+});
 
 function makeStore(accounts) {
   return {
@@ -45,7 +64,7 @@ test('accountSummary shapes an account for CLI output', () => {
   assert.equal(summary.autoSync, true);
 });
 
-test('selectAccounts filters disabled accounts by default', () => {
+test('selectAccounts includes accounts with auto-sync disabled', () => {
   const accounts = [
     { id: 'openai:a@example.com', provider: 'openai', autoSync: true },
     { id: 'claude:b@example.com', provider: 'claude', autoSync: false },
@@ -53,7 +72,7 @@ test('selectAccounts filters disabled accounts by default', () => {
   const selected = selectAccounts({}, makeStore(accounts), providers);
   assert.deepEqual(
     selected.map((account) => account.id),
-    ['openai:a@example.com'],
+    ['openai:a@example.com', 'claude:b@example.com'],
   );
 });
 
@@ -61,6 +80,19 @@ test('selectAccounts rejects unknown providers', () => {
   assert.throws(
     () => selectAccounts({ provider: 'missing' }, makeStore([]), providers),
     /Unknown provider: missing/,
+  );
+});
+
+test('selectAccounts rejects an account/provider mismatch', () => {
+  const store = makeStore([{ id: 'openai:a@example.com', provider: 'openai' }]);
+  assert.throws(
+    () =>
+      selectAccounts(
+        { accountIds: ['openai:a@example.com'], provider: 'claude' },
+        store,
+        providers,
+      ),
+    /belongs to openai, not the requested provider claude/,
   );
 });
 
@@ -90,7 +122,7 @@ test('handleList in json mode sends a single JSON stdout message', () => {
 test('handleSync returns exit code 2 when no accounts match', async () => {
   const { sent, send } = collector();
 
-  const exitCode = await handleSync({ includeDisabled: true }, send, {
+  const exitCode = await handleSync({}, send, {
     store: makeStore([]),
     scheduler: {},
     providers,
@@ -135,7 +167,7 @@ test('handleSync returns 3 when an account fails', async () => {
   assert.equal(exitCode, 3);
 });
 
-test('dispatch routes list/accounts/sync and rejects unknown commands', async () => {
+test('dispatch routes list/sync and rejects removed or unknown commands', async () => {
   const accounts = [{ id: 'openai:a@example.com', provider: 'openai', autoSync: true }];
   const store = makeStore(accounts);
   const scheduler = { syncAccount: async (id, onStatus) => onStatus('idle', 'done', id) };
@@ -143,7 +175,10 @@ test('dispatch routes list/accounts/sync and rejects unknown commands', async ()
   const { send } = collector();
 
   assert.equal(await dispatch({ cmd: 'list', args: {} }, send, deps), 0);
-  assert.equal(await dispatch({ cmd: 'accounts', args: {} }, send, deps), 0);
+  await assert.rejects(
+    () => dispatch({ cmd: 'accounts', args: {} }, send, deps),
+    /Unsupported command/,
+  );
   assert.equal(await dispatch({ cmd: 'sync', args: {} }, send, deps), 0);
   await assert.rejects(
     () => dispatch({ cmd: 'bogus', args: {} }, send, deps),
@@ -158,7 +193,7 @@ test('handleMcpAccounts sends a structured data payload of summaries', async () 
   ];
   const { sent, send } = collector();
 
-  const exitCode = await handleMcpAccounts({ includeDisabled: true }, send, {
+  const exitCode = await handleMcpAccounts({}, send, {
     store: makeStore(accounts),
     providers,
   });

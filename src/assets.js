@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { sanitizeAccountKey } = require('./path-utils');
 
 const MIME_EXTENSIONS = new Map([
   ['image/png', '.png'],
@@ -10,10 +11,6 @@ const MIME_EXTENSIONS = new Map([
 
 function sanitizeSegment(value) {
   return String(value || '').replace(/[^A-Za-z0-9._-]/g, '_');
-}
-
-function sanitizeAccountKey(value) {
-  return String(value || '').replace(/[/\\:*?"<>|]/g, '_');
 }
 
 function normalizeMimeType(value) {

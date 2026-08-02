@@ -1,9 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { sanitizeAccountKey } = require('./path-utils');
 
 function writeConversation(vaultPath, providerSubdir, accountKey, filename, markdownContent) {
   // Output: {vault}/{provider}/{account}/filename.md
-  const sanitizedAccount = accountKey.replace(/[/\\:*?"<>|]/g, '_');
+  const sanitizedAccount = sanitizeAccountKey(accountKey);
   const dir = path.join(vaultPath, providerSubdir, sanitizedAccount);
   fs.mkdirSync(dir, { recursive: true });
 

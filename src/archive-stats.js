@@ -1,9 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-
-function sanitizeAccountKey(accountKey) {
-  return String(accountKey).replace(/[/\\:*?"<>|]/g, '_');
-}
+const { sanitizeAccountKey } = require('./path-utils');
 
 function countSavedChats(vaultPath, providerSubdir, accountKey) {
   if (!vaultPath || !providerSubdir || !accountKey) return 0;

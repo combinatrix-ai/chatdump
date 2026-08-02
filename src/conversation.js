@@ -1,6 +1,7 @@
 const { ensureAuthenticated, getSession } = require('./auth');
 const store = require('./store');
 const providers = require('./providers');
+const { selectCapableAccount } = require('./account-selection');
 
 const SHARE_URL_RE = /chatgpt\.com\/share\/(?:e\/)?([A-Za-z0-9-]+)/i;
 const CONVERSATION_URL_RE = /chatgpt\.com\/(?:c|g\/[^/]+\/c)\/([0-9a-f-]{36})/i;
@@ -49,33 +50,13 @@ function selectConversationAccount(
   storeModule = store,
   providersModule = providers,
 ) {
-  const method = requiredFetchMethod(kind);
-
-  if (input.accountId) {
-    const account = storeModule.getAccount(input.accountId);
-    if (!account) throw new Error(`Account not found: ${input.accountId}`);
-    const provider = providersModule.getProvider(account.provider);
-    if (!provider) throw new Error(`Unknown provider: ${account.provider}`);
-    if (typeof provider[method] !== 'function') {
-      throw new Error(unsupportedMessage(provider, account.provider, kind));
-    }
-    return account;
-  }
-
-  const providerName = input.provider || 'openai';
-  const provider = providersModule.getProvider(providerName);
-  if (!provider) throw new Error(`Unknown provider: ${providerName}`);
-  if (typeof provider[method] !== 'function') {
-    throw new Error(unsupportedMessage(provider, providerName, kind));
-  }
-
-  const account = storeModule
-    .getAccounts()
-    .find((candidate) => candidate.provider === providerName && candidate.autoSync !== false);
-  if (!account) {
-    throw new Error(`No enabled ${provider.displayName || providerName} account configured`);
-  }
-  return account;
+  return selectCapableAccount(
+    input,
+    storeModule,
+    providersModule,
+    requiredFetchMethod(kind),
+    kind === 'share' ? 'fetching shared conversations' : 'conversation fetch by id',
+  );
 }
 
 async function getConversation(input = {}) {

@@ -3,7 +3,7 @@
 // questions, fetching conversations) for the thin CLI and MCP clients (see
 // ipc-client.js, cli-entry.js, mcp.js), which run as separate pure-node
 // processes and never touch store/scheduler/ask/conversation/electron
-// directly. `list`/`accounts`/`sync` back the CLI (stdout/progress
+// directly. `list`/`sync` back the CLI (stdout/progress
 // messages); the `mcp.*` commands back the MCP stdio server (structured
 // `data` messages instead of stdout text).
 const fs = require('node:fs');
@@ -18,9 +18,7 @@ function getSocketPath() {
   return path.join(app.getPath('userData'), 'cli.sock');
 }
 
-// Pure: shape an account for CLI/JSON output. Mirrors mcp.js's accountSummary
-// -- kept separate because cli output historically has its own field set,
-// but the two should stay in sync if either changes.
+// Pure: shape an account for CLI/JSON output.
 function accountSummary(account, store) {
   return {
     id: account.id,
@@ -35,7 +33,7 @@ function accountSummary(account, store) {
   };
 }
 
-// Pure: resolve which accounts a `sync` request applies to.
+// Pure: resolve which accounts a request applies to.
 function selectAccounts(args, store, providers) {
   const allAccounts = store.getAccounts();
 
@@ -48,9 +46,14 @@ function selectAccounts(args, store, providers) {
   }
 
   if (args.accountIds?.length > 0) {
-    return args.accountIds.map((id) => {
+    return [...new Set(args.accountIds)].map((id) => {
       const account = store.getAccount(id);
       if (!account) throw new Error(`Account not found: ${id}`);
+      if (args.provider && account.provider !== args.provider) {
+        throw new Error(
+          `Account ${id} belongs to ${account.provider}, not the requested provider ${args.provider}`,
+        );
+      }
       return account;
     });
   }
@@ -59,10 +62,17 @@ function selectAccounts(args, store, providers) {
   if (args.provider) {
     selected = selected.filter((account) => account.provider === args.provider);
   }
-  if (!args.includeDisabled) {
-    selected = selected.filter((account) => account.autoSync !== false);
-  }
   return selected;
+}
+
+function validateProviderSyncOptions(accounts, args) {
+  if ((args.sinceDays === undefined && !args.mode && !args.fullSync) || accounts.length === 0) {
+    return;
+  }
+  const hasUnsupported = accounts.some((account) => account.provider !== 'openai');
+  if (hasUnsupported) {
+    throw new Error('sinceDays and full sync options are only supported for ChatGPT accounts');
+  }
 }
 
 function formatAccountBlock(account) {
@@ -93,8 +103,42 @@ function handleList(args, send, { store }) {
   return 0;
 }
 
+async function runSyncAccount(account, args, send, scheduler, store, { done = true } = {}) {
+  send({ type: 'progress', state: 'start', message: 'sync started', accountId: account.id });
+  const messages = [];
+  await scheduler.syncAccount(
+    account.id,
+    (state, message) => {
+      const entry = { state, message: message || '' };
+      messages.push(entry);
+      send({ type: 'progress', ...entry, accountId: account.id });
+    },
+    { interactive: false, sinceDays: args.sinceDays, mode: args.mode },
+  );
+  const updated = store.getAccount(account.id) || account;
+  const result = {
+    id: account.id,
+    provider: account.provider,
+    ok: !(updated.lastError || updated.status === 'expired' || updated.status === 'partial'),
+    status: updated.status || 'ok',
+    lastError: updated.lastError || '',
+    lastSyncedAt: updated.lastSyncedAt || '',
+    messages,
+  };
+  if (done) {
+    send({
+      type: 'progress',
+      state: 'done',
+      message: result.ok ? 'ok' : `failed: ${result.lastError || result.status}`,
+      accountId: account.id,
+    });
+  }
+  return result;
+}
+
 async function handleSync(args, send, { store, scheduler, providers }) {
   const accounts = selectAccounts(args, store, providers);
+  validateProviderSyncOptions(accounts, args);
 
   if (accounts.length === 0) {
     if (args.json) {
@@ -110,47 +154,7 @@ async function handleSync(args, send, { store, scheduler, providers }) {
 
   const results = [];
   for (const account of accounts) {
-    send({
-      type: 'progress',
-      state: 'start',
-      message: 'sync started',
-      accountId: account.id,
-    });
-
-    const statusMessages = [];
-    await scheduler.syncAccount(
-      account.id,
-      (state, message) => {
-        statusMessages.push({ state, message });
-        if (message) {
-          send({ type: 'progress', state, message, accountId: account.id });
-        }
-      },
-      {
-        interactive: false,
-        sinceDays: args.sinceDays,
-        mode: args.mode,
-      },
-    );
-
-    const updated = store.getAccount(account.id) || account;
-    const result = {
-      id: account.id,
-      provider: account.provider,
-      ok: !(updated.lastError || updated.status === 'expired'),
-      status: updated.status || 'ok',
-      lastError: updated.lastError || '',
-      lastSyncedAt: updated.lastSyncedAt || '',
-      messages: statusMessages,
-    };
-    results.push(result);
-
-    send({
-      type: 'progress',
-      state: 'done',
-      message: result.ok ? 'ok' : `failed: ${result.lastError || result.status}`,
-      accountId: account.id,
-    });
+    results.push(await runSyncAccount(account, args, send, scheduler, store));
   }
 
   if (args.json) {
@@ -168,16 +172,8 @@ function defaultDeps() {
   };
 }
 
-// mcp.* inputs treat `all` as a synonym for includeDisabled (mirroring the
-// old src/mcp.js selectAccounts, which checked `input.all || input.includeDisabled`).
-// The CLI doesn't need this fold: cli.js's --all flag already sets
-// includeDisabled itself, so this is a no-op for `list`/`sync` requests.
-function withMcpIncludeDisabled(args) {
-  return { ...args, includeDisabled: Boolean(args.includeDisabled || args.all) };
-}
-
 async function handleMcpAccounts(args, send, { store, providers }) {
-  const accounts = selectAccounts(withMcpIncludeDisabled(args), store, providers).map((account) =>
+  const accounts = selectAccounts(args, store, providers).map((account) =>
     accountSummary(account, store),
   );
   send({ type: 'data', payload: { accounts } });
@@ -215,7 +211,8 @@ function validateMcpSyncInput(args) {
 
 async function handleMcpSync(args, send, { store, scheduler, providers }) {
   validateMcpSyncInput(args);
-  const accounts = selectAccounts(withMcpIncludeDisabled(args), store, providers);
+  const accounts = selectAccounts(args, store, providers);
+  validateProviderSyncOptions(accounts, args);
   const mode = args.fullSync ? `full-sync:${args.fullSync}` : undefined;
 
   if (args.dryRun) {
@@ -232,33 +229,9 @@ async function handleMcpSync(args, send, { store, scheduler, providers }) {
 
   const results = [];
   for (const account of accounts) {
-    const messages = [];
-    send({ type: 'progress', state: 'start', message: 'sync started', accountId: account.id });
-
-    await scheduler.syncAccount(
-      account.id,
-      (state, message) => {
-        const entry = { state, message: message || '' };
-        messages.push(entry);
-        send({ type: 'progress', state, message: entry.message, accountId: account.id });
-      },
-      {
-        interactive: false,
-        sinceDays: args.sinceDays,
-        mode,
-      },
+    results.push(
+      await runSyncAccount(account, { ...args, mode }, send, scheduler, store, { done: false }),
     );
-
-    const updated = store.getAccount(account.id) || account;
-    results.push({
-      id: account.id,
-      provider: account.provider,
-      ok: !(updated.lastError || updated.status === 'expired'),
-      status: updated.status || 'ok',
-      lastError: updated.lastError || '',
-      lastSyncedAt: updated.lastSyncedAt || '',
-      messages,
-    });
   }
 
   send({
@@ -273,7 +246,7 @@ async function handleMcpSync(args, send, { store, scheduler, providers }) {
 // and resolving with the exit code once the command is done.
 async function dispatch(request, send, deps = defaultDeps()) {
   const { cmd, args = {} } = request;
-  if (cmd === 'list' || cmd === 'accounts') {
+  if (cmd === 'list') {
     return handleList(args, send, deps);
   }
   if (cmd === 'sync') {
@@ -375,6 +348,7 @@ module.exports = {
   _test: {
     accountSummary,
     selectAccounts,
+    validateProviderSyncOptions,
     formatAccountBlock,
     handleList,
     handleSync,

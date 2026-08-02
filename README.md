@@ -92,25 +92,25 @@ login windows — re-login from the menu bar app if a session has expired).
 
 chatdump offers to install a `chatdump` command onto your PATH the first
 time you launch it, and you can trigger the same install any time from the
-menu bar (**Install Command Line Tool…**). Once installed, `chatdump cli
-<command>` works directly from any terminal, and MCP clients can be
-configured with `"command": "chatdump", "args": ["cli", "mcp"]` instead of
+menu bar (**Install Command Line Tool…**). Once installed, `chatdump <command>`
+works directly from any terminal, and MCP clients can be
+configured with `"command": "chatdump", "args": ["mcp"]` instead of
 the full app path. This is unavailable in the Mac App Store build.
 
 If you'd rather not install it (or are on the Mac App Store build), call
 the binary inside the app bundle directly:
 
 ```sh
-/Applications/chatdump.app/Contents/MacOS/chatdump cli <command> [options]
+/Applications/chatdump.app/Contents/MacOS/chatdump <command> [options]
 ```
 
 Commands:
 
 - `help` — print usage.
-- `list` (alias `accounts`) — list configured accounts and their sync
-  status. Add `--json` for machine-readable output.
-- `sync` — sync selected accounts. Options: `--all`, `--include-disabled`,
-  `--account <id>` (repeatable), `--provider <name>`, `--since-days <days>`,
+- `list` — list configured accounts and their sync status. Add `--json` for
+  machine-readable output.
+- `sync` — sync all configured accounts by default. Options: `--account <id>`
+  (repeatable), `--provider <name>`, `--since-days <days>`,
   `--full-sync <created_at|last_message_at>`, `--json`.
 - `fetch <url-or-id>` — fetch one provider conversation id, `chatgpt.com/c/<id>`
   URL, or public `chatgpt.com/share/<id>` link. Options: `--account <id>`,
@@ -120,11 +120,11 @@ Commands:
 Examples:
 
 ```sh
-/Applications/chatdump.app/Contents/MacOS/chatdump cli list
-/Applications/chatdump.app/Contents/MacOS/chatdump cli sync --all
-/Applications/chatdump.app/Contents/MacOS/chatdump cli sync \
+/Applications/chatdump.app/Contents/MacOS/chatdump list
+/Applications/chatdump.app/Contents/MacOS/chatdump sync
+/Applications/chatdump.app/Contents/MacOS/chatdump sync \
   --account openai:user@example.com --since-days 7
-/Applications/chatdump.app/Contents/MacOS/chatdump cli fetch \
+/Applications/chatdump.app/Contents/MacOS/chatdump fetch \
   https://chatgpt.com/share/abc123
 ```
 
@@ -146,14 +146,13 @@ Project-scoped MCP client example, pointing at the packaged app:
   "mcpServers": {
     "chatdump": {
       "command": "/Applications/chatdump.app/Contents/MacOS/chatdump",
-      "args": ["cli", "mcp"]
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-When running from source, use `npm run mcp` (equivalent to
-`electron . cli mcp`) instead of the packaged binary.
+When running from source, use `npm run mcp` instead of the packaged binary.
 
 The server exposes four tools:
 
@@ -166,7 +165,7 @@ The server exposes four tools:
   share endpoint, so they resolve even for conversations the signed-in account
   does not own. Returns the provider raw JSON too when `includeRaw` is `true`.
 - `accounts` — list configured accounts and sync status.
-- `sync` — sync selected accounts to their configured folders.
+- `sync` — sync all configured accounts (or selected filters) to their configured folders.
 
 It also exposes the `chatdump://accounts` resource for configured accounts as
 JSON.

@@ -14,17 +14,13 @@ const { writeConversation } = require('./writer');
 const { writeRawCache } = require('./cache');
 const { reparseOutdated } = require('./reparse');
 const { appendLog } = require('./synclog');
+const { addProviderFailures, partialFailureMessage } = require('./sync-result');
 
 let timeoutId = null;
 let schedulerRunning = false;
-let onMenuRefresh = null;
 const syncingAccounts = new Set();
 const accountProgress = new Map(); // id -> short progress string
 const abortControllers = new Map(); // id -> AbortController for in-flight syncs
-
-function setMenuRefreshCallback(cb) {
-  onMenuRefresh = cb;
-}
 
 function isSyncing(accountId) {
   return syncingAccounts.has(accountId);
@@ -41,6 +37,21 @@ function getSyncingCount() {
 function stopSync(accountId) {
   const ac = abortControllers.get(accountId);
   if (ac) ac.abort();
+}
+
+function waitForSyncStop(accountId, timeoutMs = 30_000) {
+  if (!syncingAccounts.has(accountId)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const check = () => {
+      if (!syncingAccounts.has(accountId) || Date.now() - startedAt >= timeoutMs) {
+        resolve(!syncingAccounts.has(accountId));
+        return;
+      }
+      setTimeout(check, 50);
+    };
+    check();
+  });
 }
 
 function stopAllSyncs() {
@@ -95,6 +106,13 @@ async function syncAccount(accountId, onStatus, options = {}) {
   const provider = getProvider(account.provider);
   if (!provider) return;
 
+  if (account.provider !== 'openai' && (options.sinceDays !== undefined || options.mode)) {
+    const msg = 'sinceDays and full sync options are only supported for ChatGPT accounts';
+    updateAccount(accountId, { status: 'error', lastError: msg });
+    onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
+    return;
+  }
+
   syncingAccounts.add(accountId);
   const abortController = new AbortController();
   abortControllers.set(accountId, abortController);
@@ -116,7 +134,6 @@ async function syncAccount(accountId, onStatus, options = {}) {
       appendLog(accountId, { level: 'error', message: msg });
       updateAccount(accountId, { lastError: msg });
       onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
-      onMenuRefresh?.();
       return;
     }
 
@@ -129,7 +146,6 @@ async function syncAccount(accountId, onStatus, options = {}) {
     appendLog(accountId, { level: 'info', message: startLabel });
     updateAccount(accountId, { lastError: null });
     setProgress(accountId, 'Authenticating…');
-    onMenuRefresh?.();
     onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
 
     try {
@@ -141,7 +157,6 @@ async function syncAccount(accountId, onStatus, options = {}) {
       appendLog(accountId, { level: 'error', message: msg });
       updateAccount(accountId, { status: 'expired', lastError: msg });
       onStatus?.('error', `${provider.displayName}: ${msg}`, accountId);
-      onMenuRefresh?.();
       return;
     }
 
@@ -175,6 +190,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
     let written = 0;
     let fetched = 0;
     let failedWrites = 0;
+    const failureDetails = new Map();
 
     try {
       let totalConvs = 0;
@@ -212,6 +228,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
         } catch (e) {
           failedWrites++;
           const convId = getConversationId(conv, provider);
+          failureDetails.set(convId, e.message);
           const msg = `Write failed for ${convId}: ${e.message}`;
           appendLog(accountId, { level: 'error', message: msg, detail: e.stack || e.message });
           console.error(`[${account.provider}] ${msg}`);
@@ -219,7 +236,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
         }
       };
 
-      await provider.fetchConversations(
+      const fetchResult = await provider.fetchConversations(
         ses,
         timestamps,
         (current, total, customMsg) => {
@@ -240,38 +257,44 @@ async function syncAccount(accountId, onStatus, options = {}) {
               written,
               fetched,
             });
-            onMenuRefresh?.();
           }
         },
         onConversation,
         effectiveOptions,
       );
 
+      const failedConversations = addProviderFailures(failureDetails, fetchResult?.failed);
+
       const now = new Date().toISOString();
       const stopped = abortController.signal.aborted;
       const msg = stopped
         ? `Stopped: ${written} files written, ${fetched} fetched`
-        : failedWrites
-          ? `Partial sync: ${written} files (${failedWrites} failed, ${fetched} fetched)`
+        : failedConversations
+          ? `Partial sync: ${written} files (${failedConversations} failed, ${fetched} fetched)`
           : written > 0
             ? `Synced ${written} files (${fetched} fetched)`
             : `Up to date (${totalConvs || 0} checked)`;
 
       appendLog(accountId, {
-        level: failedWrites ? 'error' : 'info',
+        level: failedConversations ? 'error' : 'info',
         message: msg,
         written,
         fetched,
         failedWrites,
+        failedConversations,
       });
       updateAccount(accountId, {
         timestamps,
         lastSyncedAt: now,
-        status: 'ok',
-        lastError: failedWrites ? `${failedWrites} conversation(s) failed to save` : null,
+        status: failedConversations ? 'partial' : 'ok',
+        lastError: partialFailureMessage(failedConversations),
       });
 
-      onStatus?.(failedWrites ? 'error' : 'idle', `${provider.displayName}: ${msg}`, accountId);
+      onStatus?.(
+        failedConversations ? 'error' : 'idle',
+        `${provider.displayName}: ${msg}`,
+        accountId,
+      );
     } catch (e) {
       let msg;
       if (abortController.signal.aborted) {
@@ -308,13 +331,11 @@ async function syncAccount(accountId, onStatus, options = {}) {
     abortControllers.delete(accountId);
     setProgress(accountId, '');
   }
-
-  onMenuRefresh?.();
 }
 
 async function syncAll(onStatus, options = {}) {
-  const { includeDisabled = false, ...syncOptions } = options;
-  const accounts = includeDisabled ? getAccounts() : getAccounts().filter((a) => a.autoSync);
+  const { scheduled = false, ...syncOptions } = options;
+  const accounts = scheduled ? getAccounts().filter((a) => a.autoSync) : getAccounts();
   for (const account of accounts) {
     await syncAccount(account.id, onStatus, syncOptions);
   }
@@ -326,7 +347,7 @@ function startScheduler(onStatus) {
 
   async function runAndScheduleNext() {
     try {
-      await syncAll(onStatus);
+      await syncAll(onStatus, { scheduled: true });
     } finally {
       if (schedulerRunning) {
         // Read fresh each cycle so changes from the menu take effect on the next run.
@@ -353,8 +374,8 @@ module.exports = {
   startScheduler,
   stopScheduler,
   stopSync,
+  waitForSyncStop,
   stopAllSyncs,
-  setMenuRefreshCallback,
   isSyncing,
   getAccountProgress,
   getSyncingCount,

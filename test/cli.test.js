@@ -32,6 +32,12 @@ test('parseArgs accepts mcp command', () => {
   assert.equal(options.command, 'mcp');
 });
 
+test('parseArgs rejects options that do not belong to the command', () => {
+  assert.throws(() => parseArgs(['list', '--since-days', '7']), /list supports only --json/);
+  assert.throws(() => parseArgs(['mcp', '--json']), /mcp does not accept options/);
+  assert.throws(() => parseArgs(['help', '--json']), /help does not accept options/);
+});
+
 test('parseArgs parses fetch ref and options', () => {
   const options = parseArgs([
     'fetch',

@@ -16,3 +16,8 @@ require('./archive-stats.test');
 require('./user-agent.test');
 require('./reparse.test');
 require('./writer.test');
+require('./account-removal.test');
+require('./sync-result.test');
+require('./path-utils.test');
+require('./account-selection.test');
+require('./cli-install-ui.test');

@@ -14,16 +14,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { chromeUserAgent } = require('./user-agent');
 const { createTray } = require('./tray');
-const {
-  startScheduler,
-  stopScheduler,
-  stopAllSyncs,
-  setMenuRefreshCallback,
-} = require('./scheduler');
+const { startScheduler, stopScheduler, stopAllSyncs } = require('./scheduler');
 const { store, getAccounts } = require('./store');
-const { getSession } = require('./auth');
-const { getProvider } = require('./providers');
 const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('./cli-install');
+const { showCliInstallResult } = require('./cli-install-ui');
 const { startIpcServer, stopIpcServer } = require('./ipc-server');
 const { initUpdater, stopUpdater } = require('./updater');
 
@@ -67,39 +61,6 @@ if (process.platform === 'darwin') {
   app.dock?.hide();
 }
 
-// Migrate cookies from defaultSession to per-account partitions (one-time)
-async function migrateCookies() {
-  const migrated = store.get('cookiesMigrated');
-  if (migrated) return;
-
-  const accounts = getAccounts();
-  for (const account of accounts) {
-    const prov = getProvider(account.provider);
-    if (!prov) continue;
-
-    const cookies = await session.defaultSession.cookies.get({ url: prov.baseUrl });
-    if (cookies.length === 0) continue;
-
-    const ses = getSession(account.id);
-    for (const cookie of cookies) {
-      await ses.cookies
-        .set({
-          url: prov.baseUrl,
-          name: cookie.name,
-          value: cookie.value,
-          domain: cookie.domain,
-          path: cookie.path,
-          secure: cookie.secure,
-          httpOnly: cookie.httpOnly,
-          expirationDate: cookie.expirationDate,
-        })
-        .catch(() => {});
-    }
-    console.log(`[migrate] Copied cookies for ${account.id}`);
-  }
-  store.set('cookiesMigrated', true);
-}
-
 async function cleanupOrphanPartitions() {
   const partitionsDir = path.join(app.getPath('userData'), 'Partitions');
   let entries;
@@ -113,7 +74,7 @@ async function cleanupOrphanPartitions() {
   }
 
   const currentAccountIds = new Set(getAccounts().map((account) => account.id));
-  const orphanPattern = /^(?:[a-z]+):account-\d+$/;
+  const providerPartitionPattern = /^(?:claude|openai|gemini):.+$/;
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -125,7 +86,7 @@ async function cleanupOrphanPartitions() {
       continue;
     }
 
-    if (!orphanPattern.test(partitionId)) continue;
+    if (!providerPartitionPattern.test(partitionId)) continue;
     if (currentAccountIds.has(partitionId)) continue;
 
     try {
@@ -153,37 +114,21 @@ async function maybePromptCliInstall(buildMenu) {
     cancelId: 1,
     title: 'Install command line tool?',
     message: 'Install the chatdump command line tool?',
-    detail: 'Enables chatdump cli and the MCP server from your terminal.',
+    detail: 'Enables the chatdump command and MCP server from your terminal.',
   });
   if (response !== 0) return;
 
   const result = await installCliTool();
-  if (result.ok) {
-    await dialog.showMessageBox({
-      type: 'info',
-      title: 'chatdump command installed',
-      message: 'chatdump command installed',
-      detail: `chatdump command installed at ${result.path}. Try: chatdump cli list`,
-    });
-  } else if (result.reason !== 'cancelled') {
-    await dialog.showMessageBox({
-      type: 'error',
-      title: 'Could not install chatdump command',
-      message: 'Could not install chatdump command',
-      detail: result.message || 'Unknown error',
-    });
-  }
+  await showCliInstallResult(dialog, result);
   buildMenu?.();
 }
 
 if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     ensureDefaultVaultPath();
-    await migrateCookies();
     await cleanupOrphanPartitions();
 
     const { onStatus, buildMenu } = createTray();
-    setMenuRefreshCallback(buildMenu);
     startIpcServer();
     initUpdater(buildMenu);
 

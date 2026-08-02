@@ -7,18 +7,11 @@
 // Every command delegates to the running GUI app over a Unix socket (see
 // ipc-client.js) so there is only ever one Electron process touching the
 // Chromium userData profile (cookies, LevelDB, SingletonLock). `list`/
-// `accounts`/`sync` stream stdout/progress text via runViaDelegation();
+// `list`/`sync` stream stdout/progress text via runViaDelegation();
 // `mcp` runs a thin stdio MCP server in this same pure-node process (see
 // mcp.js), whose tools each delegate to the GUI individually.
 const { parseArgs, printHelp, CliUsageError } = require('./cli');
 const { requestData, runViaDelegation } = require('./ipc-client');
-
-// Accept both `chatdump list` (new, direct) and `chatdump cli list`
-// (old spelling some docs/muscle-memory may still use) by stripping an
-// optional leading `cli` token.
-function stripLeadingCliToken(argv) {
-  return argv[0] === 'cli' ? argv.slice(1) : argv;
-}
 
 function stripRawProviderPayload(result) {
   const { raw, ...safeResult } = result || {};
@@ -52,8 +45,7 @@ async function runFetch(options, deps = {}) {
 }
 
 async function main(argv, deps = {}) {
-  const args = stripLeadingCliToken(argv);
-  const options = parseArgs(args);
+  const options = parseArgs(argv);
   const runViaDelegationImpl = deps.runViaDelegation || runViaDelegation;
 
   if (options.command === 'help') {
@@ -66,7 +58,7 @@ async function main(argv, deps = {}) {
     return 0;
   }
 
-  if (options.command === 'list' || options.command === 'accounts' || options.command === 'sync') {
+  if (options.command === 'list' || options.command === 'sync') {
     const { command, ...delegatedArgs } = options;
     return runViaDelegationImpl(command, delegatedArgs);
   }
@@ -99,7 +91,6 @@ module.exports = {
   main,
   _test: {
     runFetch,
-    stripLeadingCliToken,
     stripRawProviderPayload,
   },
 };

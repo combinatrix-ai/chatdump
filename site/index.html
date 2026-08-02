@@ -1044,7 +1044,7 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
         <article class="feature-card">
           <span class="feature-num">06</span>
           <h3>Memory for your agents</h3>
-          <p>A stdio MCP server and CLI let Claude Code, Codex, or your own tooling search everything you've ever discussed.</p>
+          <p>A stdio MCP server and CLI let Claude Code, Codex, or your own tooling sync and read your archived conversations.</p>
         </article>
       </div>
     </div>
@@ -1107,8 +1107,8 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
         <p style="color:var(--ink-soft); font-size:1.02rem; margin:0 0 1.4rem;">
           Your archive is more than a backup — it's context. chatdump doubles as a
           stdio MCP server, so any MCP-aware agent — Claude Code, Codex, or your
-          own harness — can search every conversation you've ever had and read
-          any of them in full. It reuses the same accounts and sessions as the
+          own harness — can sync accounts and read individual conversations in
+          full. It reuses the same accounts and sessions as the
           menu bar app.
         </p>
         <div class="tool-list ledger">
@@ -1139,13 +1139,13 @@ Day 3: Kinkaku-ji, Daitoku-ji, then Nishiki Market before you leave.</pre>
       </div>
       <div>
         <p class="code-title">Run it</p>
-        <pre class="code-block"><span class="muted">$</span> /Applications/chatdump.app/Contents/MacOS/chatdump cli mcp</pre>
+        <pre class="code-block"><span class="muted">$</span> /Applications/chatdump.app/Contents/MacOS/chatdump mcp</pre>
         <p class="code-title">Project-scoped MCP client</p>
         <pre class="code-block">{
   <span class="accent">"mcpServers"</span>: {
     <span class="accent">"chatdump"</span>: {
       <span class="accent">"command"</span>: <span class="str">"/Applications/chatdump.app/Contents/MacOS/chatdump"</span>,
-      <span class="accent">"args"</span>: [<span class="str">"cli"</span>, <span class="str">"mcp"</span>]
+      <span class="accent">"args"</span>: [<span class="str">"mcp"</span>]
     }
   }
 }</pre>

@@ -120,7 +120,6 @@ async function startMcpServer() {
       description: 'List configured chatdump accounts and their sync status.',
       inputSchema: {
         provider: z.string().optional(),
-        includeDisabled: z.boolean().optional(),
       },
     },
     async (input) => {
@@ -134,12 +133,10 @@ async function startMcpServer() {
     {
       title: 'Sync chatdump accounts',
       description:
-        'Sync configured chatdump accounts to their destination folders using existing login sessions.',
+        'Sync configured chatdump accounts to their destination folders using existing login sessions. sinceDays and fullSync are ChatGPT-only and reject mixed-provider selections.',
       inputSchema: {
         accountIds: z.array(z.string()).optional(),
         provider: z.string().optional(),
-        includeDisabled: z.boolean().optional(),
-        all: z.boolean().optional(),
         sinceDays: z.number().int().positive().optional(),
         fullSync: z.enum(['created_at', 'last_message_at']).optional(),
         dryRun: z.boolean().optional(),

@@ -1,6 +1,7 @@
 const { ensureAuthenticated, getSession } = require('./auth');
 const store = require('./store');
 const providers = require('./providers');
+const { selectCapableAccount } = require('./account-selection');
 
 function getAskCapableProvider(name) {
   const provider = providers.getProvider(name);
@@ -12,35 +13,7 @@ function getAskCapableProvider(name) {
 }
 
 function selectAskAccount(input = {}, storeModule = store, providersModule = providers) {
-  const accounts = storeModule.getAccounts();
-
-  if (input.accountId) {
-    const account = storeModule.getAccount(input.accountId);
-    if (!account) throw new Error(`Account not found: ${input.accountId}`);
-    const provider = providersModule.getProvider(account.provider);
-    if (!provider) throw new Error(`Unknown provider: ${account.provider}`);
-    if (typeof provider.askWithBrowser !== 'function') {
-      throw new Error(
-        `${provider.displayName || account.provider} does not support browser ask yet`,
-      );
-    }
-    return account;
-  }
-
-  const providerName = input.provider || 'openai';
-  const provider = providersModule.getProvider(providerName);
-  if (!provider) throw new Error(`Unknown provider: ${providerName}`);
-  if (typeof provider.askWithBrowser !== 'function') {
-    throw new Error(`${provider.displayName || providerName} does not support browser ask yet`);
-  }
-
-  const account = accounts.find(
-    (candidate) => candidate.provider === providerName && candidate.autoSync !== false,
-  );
-  if (!account) {
-    throw new Error(`No enabled ${provider.displayName || providerName} account configured`);
-  }
-  return account;
+  return selectCapableAccount(input, storeModule, providersModule, 'askWithBrowser', 'browser ask');
 }
 
 async function askQuestion(input = {}) {

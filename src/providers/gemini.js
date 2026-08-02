@@ -1,5 +1,6 @@
 const { makeRawPostRequest, makeRawRequest, shouldRethrowProviderError } = require('./request');
 const { withRetry } = require('./retry');
+const { sanitizeFilenameTitle } = require('../path-utils');
 
 const BASE = 'https://gemini.google.com';
 const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
@@ -23,10 +24,6 @@ const provider = {
     return conversation?.id || '';
   },
 
-  getRawCache(conversation) {
-    return conversation;
-  },
-
   parseFromCache(raw) {
     if (raw && typeof raw._rawMsgResp === 'string') {
       return {
@@ -44,10 +41,6 @@ const provider = {
   parseAccountFromCookies(_cookies) {
     // No reliable email in cookies for Gemini — will be filled from page HTML
     return { email: '', name: '', plan: '' };
-  },
-
-  parseAccountInfo() {
-    return null;
   },
 
   async getAccountInfo(ses) {
@@ -74,7 +67,9 @@ const provider = {
     }
 
     // Step 2: Fetch conversation list via MaZiqc RPC
-    const conversations = await fetchConversationListPages(ses, tokens, options.signal);
+    const listResult = await fetchConversationListPages(ses, tokens, options.signal);
+    const conversations = listResult.conversations;
+    const failed = [...listResult.failed];
 
     console.log(`[gemini] Found ${conversations.length} conversations`);
 
@@ -92,7 +87,8 @@ const provider = {
       }
     } catch (e) {
       if (shouldRethrowProviderError(e, options.signal)) throw e;
-      /* ignore */
+      failed.push({ id: 'pinned', error: e.message });
+      console.error(`[gemini] Failed to fetch pinned conversations: ${e.message}`);
     }
 
     // Step 3: Filter to updated conversations
@@ -125,6 +121,9 @@ const provider = {
         ]);
         const msgResp = await batchExecute(ses, tokens, 'hNvQHb', msgPayload, options.signal);
         const messages = parseConversationMessages(msgResp);
+        if (typeof msgResp === 'string' && msgResp.trim() && messages.length === 0) {
+          throw new Error('Gemini message response could not be parsed');
+        }
         const full = {
           id: conv.id,
           title: conv.title,
@@ -136,10 +135,11 @@ const provider = {
         timestamps[conv.id] = conv.timestamp;
       } catch (e) {
         if (shouldRethrowProviderError(e, options.signal)) throw e;
+        failed.push({ id: conv.id, error: e.message });
         console.error(`[gemini] Failed ${conv.id}: ${e.message}`);
       }
     }
-    return [];
+    return { failed };
   },
 
   convertToMarkdown(conversation) {
@@ -176,7 +176,7 @@ const provider = {
     const date = ts
       ? new Date(ts).toISOString().slice(0, 10)
       : new Date().toISOString().slice(0, 10);
-    const title = sanitize(conversation.title || 'untitled');
+    const title = sanitizeFilenameTitle(conversation.title || 'untitled');
     const idSuffix = (conversation.id || '').replace('c_', '').slice(0, 8);
     return `${date}_${title}_${idSuffix}.md`;
   },
@@ -246,6 +246,7 @@ async function batchExecute(ses, tokens, rpcId, payload, signal) {
 
 async function fetchConversationListPages(ses, tokens, signal) {
   const conversations = [];
+  const failed = [];
   let pageToken = null;
 
   for (let page = 1; page <= MAX_LIST_PAGES; page++) {
@@ -262,6 +263,7 @@ async function fetchConversationListPages(ses, tokens, signal) {
       }
     } catch (e) {
       if (shouldRethrowProviderError(e, signal) || page === 1) throw e;
+      failed.push({ id: `list-page-${page}`, error: e.message });
       console.error(`[gemini] Failed to fetch list page ${page}: ${e.message}`);
       break;
     }
@@ -279,7 +281,7 @@ async function fetchConversationListPages(ses, tokens, signal) {
     await sleep(LIST_PAGE_DELAY_MS);
   }
 
-  return conversations;
+  return { conversations, failed };
 }
 
 function parseConversationList(raw) {
@@ -459,13 +461,6 @@ function parseFrames(text) {
   }
 
   return frames;
-}
-
-function sanitize(name) {
-  return name
-    .replace(/[/\\:*?"<>|]/g, '_')
-    .replace(/\s+/g, '_')
-    .slice(0, 80);
 }
 
 provider._test = {

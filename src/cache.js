@@ -1,12 +1,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { sanitizeAccountKey } = require('./path-utils');
 
 function sanitizeSegment(s) {
-  return String(s).replace(/[/\\:*?"<>|]/g, '_');
+  return sanitizeAccountKey(s);
 }
 
 function cacheDir(vaultPath, providerSubdir, accountKey) {
-  return path.join(vaultPath, '.chatdump', 'cache', providerSubdir, sanitizeSegment(accountKey));
+  return path.join(vaultPath, '.chatdump', 'cache', providerSubdir, sanitizeAccountKey(accountKey));
 }
 
 function cachePath(vaultPath, providerSubdir, accountKey, id) {

@@ -1,23 +1,23 @@
 // Pure argument parsing for the chatdump CLI -- no electron, no store, no
 // scheduler. Required by src/cli-entry.js, a pure-node process launched via
 // ELECTRON_RUN_AS_NODE, which must not touch electron APIs. The actual work
-// for `list`/`sync`/`fetch`/`accounts`/`mcp.*` lives in src/ipc-server.js, which runs
+// for `list`/`sync`/`fetch`/`mcp.*` lives in src/ipc-server.js, which runs
 // inside the GUI Electron process and is reached over the IPC socket (see
 // src/ipc-client.js).
-const COMMANDS = new Set(['help', 'list', 'accounts', 'sync', 'fetch', 'mcp']);
+const COMMANDS = new Set(['help', 'list', 'sync', 'fetch', 'mcp']);
 
 function printHelp(stream = process.stdout) {
   stream.write(`chatdump CLI
 
 Usage:
   chatdump list [--json]
-  chatdump sync [--all] [--include-disabled] [--account <id>] [--provider <name>] [--since-days <days>] [--full-sync <created_at|last_message_at>] [--json]
+  chatdump sync [--account <id>] [--provider <name>] [--since-days <days>] [--full-sync <created_at|last_message_at>] [--json]
   chatdump fetch <url-or-id> [--account <id>] [--provider <name>] [--json]
   chatdump mcp
 
 Examples:
   chatdump list
-  chatdump sync --all
+  chatdump sync
   chatdump sync --account openai:user@example.com --since-days 7
   chatdump sync --account openai:user@example.com --full-sync created_at
   chatdump fetch https://chatgpt.com/share/abc123
@@ -42,8 +42,6 @@ function parseArgs(args) {
     command: args[0] || 'help',
     accountIds: [],
     provider: '',
-    includeDisabled: false,
-    all: false,
     json: false,
     sinceDays: undefined,
     mode: undefined,
@@ -58,11 +56,6 @@ function parseArgs(args) {
     const arg = args[i];
     if (arg === '--json') {
       options.json = true;
-    } else if (arg === '--all') {
-      options.all = true;
-      options.includeDisabled = true;
-    } else if (arg === '--include-disabled') {
-      options.includeDisabled = true;
     } else if (arg === '--account') {
       const value = args[++i];
       if (!value) throw new CliUsageError('--account requires an account id');
@@ -104,12 +97,31 @@ function parseArgs(args) {
     if (options.accountIds.length > 1) {
       throw new CliUsageError('fetch accepts at most one --account');
     }
-    if (options.all || options.includeDisabled || options.sinceDays !== undefined || options.mode) {
+    if (options.sinceDays !== undefined || options.mode) {
       throw new CliUsageError('fetch supports only --account, --provider, and --json');
     }
   }
 
+  validateCommandOptions(options);
+
   return options;
+}
+
+function validateCommandOptions(options) {
+  const hasSelection = options.accountIds.length > 0 || Boolean(options.provider);
+  const hasSyncOptions = options.sinceDays !== undefined || options.mode;
+  if (options.command === 'help' && (options.json || hasSelection || hasSyncOptions)) {
+    throw new CliUsageError('help does not accept options');
+  }
+  if (options.command === 'list' && (hasSelection || hasSyncOptions || options.conversationId)) {
+    throw new CliUsageError('list supports only --json');
+  }
+  if (options.command === 'mcp' && (options.json || hasSelection || hasSyncOptions)) {
+    throw new CliUsageError('mcp does not accept options');
+  }
+  if (options.command === 'sync' && options.conversationId) {
+    throw new CliUsageError('sync does not accept a conversation reference');
+  }
 }
 
 function parsePositiveInteger(value, flag) {
@@ -135,5 +147,6 @@ module.exports = {
   _test: {
     parseFullSyncMode,
     parsePositiveInteger,
+    validateCommandOptions,
   },
 };

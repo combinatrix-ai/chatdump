@@ -20,7 +20,7 @@ const provider = {
   cookieName: '__Secure-next-auth.session-token',
   cookiePrefix: true,
   meEndpoint: null, // We use cookies + /api/auth/session instead
-  parserVersion: 3,
+  parserVersion: 4,
 
   getId(conversation) {
     return conversation?.conversation_id || conversation?.id || '';

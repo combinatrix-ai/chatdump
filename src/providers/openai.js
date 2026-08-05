@@ -607,13 +607,30 @@ function messageParts(message, options = {}) {
   if (!visibleContent) return { parts: [], assets: [] };
   const generated = options.generated === true;
   const includeText = options.includeText !== false;
+  // Voice conversations can carry the actual transcript in an object part even
+  // when the message is marked as a thinking preamble.  Suppress only ordinary
+  // string parts for those assistant messages; the audio transcript must remain
+  // in the document (and in its original position).
+  const metadata = message?.metadata;
+  const suppressStringText =
+    message?.author?.role === 'assistant' && metadata?.is_thinking_preamble_message === true;
   const alt = generated
     ? String(message?.metadata?.image_gen_title || 'Generated image')
     : String(message?.metadata?.image_title || 'Uploaded image');
   const parts = [];
   const assets = [];
   for (const value of message?.content?.parts || []) {
-    if (includeText && typeof value === 'string' && value.trim()) {
+    if (
+      includeText &&
+      typeof value === 'object' &&
+      value?.content_type === 'audio_transcription' &&
+      typeof value.text === 'string' &&
+      value.text.trim()
+    ) {
+      parts.push({ type: 'text', text: value.text });
+      continue;
+    }
+    if (includeText && !suppressStringText && typeof value === 'string' && value.trim()) {
       parts.push({ type: 'text', text: value });
       continue;
     }

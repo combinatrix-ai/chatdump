@@ -199,6 +199,80 @@ test('extractDocument keeps uploaded images in user part order', () => {
   ]);
 });
 
+test('extractDocument keeps voice transcripts for both roles in part order', () => {
+  const result = extractDocument([
+    {
+      author: { role: 'user' },
+      content: {
+        content_type: 'multimodal_text',
+        parts: [{ content_type: 'audio_transcription', text: 'ユーザーの発話' }, '補足テキスト'],
+      },
+    },
+    {
+      author: { role: 'assistant' },
+      content: {
+        content_type: 'multimodal_text',
+        parts: [
+          { content_type: 'audio_transcription', text: 'Assistant voice reply' },
+          'Normal text reply',
+        ],
+      },
+    },
+  ]);
+
+  assert.deepEqual(result.turns, [
+    {
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'ユーザーの発話' },
+        { type: 'text', text: '補足テキスト' },
+      ],
+    },
+    {
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Assistant voice reply' },
+        { type: 'text', text: 'Normal text reply' },
+      ],
+    },
+  ]);
+});
+
+test('extractDocument filters assistant thinking preambles but keeps audio transcripts and normal text', () => {
+  const result = extractDocument([
+    {
+      author: { role: 'assistant' },
+      metadata: { is_thinking_preamble_message: true },
+      content: {
+        content_type: 'multimodal_text',
+        parts: [
+          'I am preparing an answer internally.',
+          { content_type: 'audio_transcription', text: '音声での回答' },
+          'This visible string is still a preamble.',
+        ],
+      },
+    },
+    {
+      author: { role: 'assistant' },
+      metadata: { reasoning_status: 'complete' },
+      content: { content_type: 'text', parts: ['Reasoning status alone is still visible'] },
+    },
+    {
+      author: { role: 'assistant' },
+      content: { content_type: 'text', parts: ['通常の回答'] },
+    },
+  ]);
+
+  assert.deepEqual(result.turns, [
+    { role: 'assistant', parts: [{ type: 'text', text: '音声での回答' }] },
+    {
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Reasoning status alone is still visible' }],
+    },
+    { role: 'assistant', parts: [{ type: 'text', text: '通常の回答' }] },
+  ]);
+});
+
 test('extractDocument creates one assistant turn for duplicate generated tool images', () => {
   const image = {
     content_type: 'image_asset_pointer',

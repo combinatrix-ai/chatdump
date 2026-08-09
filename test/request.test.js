@@ -7,11 +7,7 @@ const {
   shouldRethrowProviderError,
 } = require('../src/providers/request');
 
-const {
-  createUtf8Accumulator,
-  isAllowedHost,
-  redactedHeaders,
-} = _test;
+const { createUtf8Accumulator, isAllowedHost, redactedHeaders } = _test;
 
 test('provider control-flow errors are classified consistently', () => {
   const authExpired = new Error('AUTH_EXPIRED');

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/katayama/.agents/skills/agmsg/scripts/session-start.sh' 'claude-code' '/Volumes/Shared/sync/chativist'"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -27,6 +27,7 @@ const { getUpdateState, checkForUpdates, quitAndInstall } = require('./updater')
 const { countSavedChats } = require('./archive-stats');
 const { getTrayIconState } = require('./tray-state');
 const { removeAccountSafely } = require('./account-removal');
+const { addAccount } = require('./account-add');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -352,133 +353,21 @@ function buildMenu() {
   const addAccountSubmenu = allProviders().map((prov) => ({
     label: prov.displayName,
     click: async () => {
-      try {
-        if (prov.name === 'openai' && !store.get('chatgpt.skipAddAccountWarning', false)) {
-          if (process.platform === 'darwin') app.dock?.show();
-          let proceed = false;
-          let dontShowAgain = false;
-          try {
-            const focusWin = new BrowserWindow({ show: false });
-            const res = await dialog.showMessageBox(focusWin, {
-              type: 'info',
-              buttons: ['Sign in to ChatGPT', 'Cancel'],
-              defaultId: 0,
-              cancelId: 1,
-              title: 'Heads up — ChatGPT-only side effect',
-              message: "Reading a chat inevitably bumps it to the top of ChatGPT's sidebar.",
-              detail:
-                "ChatGPT's API has no read-only fetch — every conversation chatdump " +
-                'reads bumps its server-side update_time, so threads jump to the top ' +
-                'of your ChatGPT sidebar one by one as sync runs.\n\n' +
-                'chatdump reads them oldest-touched first, so once sync finishes the ' +
-                'sidebar settles back to its natural order (most-recently-used at top). ' +
-                'The disturbance is temporary.\n\n' +
-                'Claude and Gemini are not affected.',
-              checkboxLabel: "Don't show this again",
-              checkboxChecked: false,
-              noLink: true,
-            });
-            focusWin.destroy();
-            proceed = res.response === 0;
-            dontShowAgain = res.checkboxChecked;
-          } finally {
-            if (process.platform === 'darwin') app.dock?.hide();
-          }
-          if (!proceed) return;
-          if (dontShowAgain) store.set('chatgpt.skipAddAccountWarning', true);
-        }
-        const result = await openLoginWindow(prov.name);
-        const tempSes = result.session;
-        let accountId = null;
-        let persistSes = null;
-
-        try {
-          // Step 1: Create account entry immediately with a temp ID
-          // Use timestamp to ensure uniqueness, will be updated with email later
-          const tempId = `${prov.name}:account-${Date.now()}`;
-          accountId = tempId;
-
-          // Step 2: Copy cookies from temp session to persistent session
-          persistSes = getSession(accountId);
-          const cookies = await tempSes.cookies.get({ url: prov.baseUrl });
-          await copyProviderCookies(cookies, persistSes, accountId);
-
-          // Step 3: Save account entry right away so it appears in the menu
-          upsertAccount({
-            id: accountId,
-            provider: prov.name,
-            email: '',
-            name: `${prov.displayName} account`,
-            status: 'ok',
-          });
-          buildMenu();
-
-          // Step 4: Try to get account info — multiple strategies
-          let info = null;
-          try {
-            // Strategy 1: Parse from API response fetched via browser
-            if (result.accountInfo && prov.parseAccountInfo) {
-              info = prov.parseAccountInfo(result.accountInfo);
-            }
-            // Strategy 2: Parse from cookies directly
-            if (!info?.email && result.cookies && prov.parseAccountFromCookies) {
-              const cookieInfo = prov.parseAccountFromCookies(result.cookies);
-              if (cookieInfo.email || cookieInfo.name) {
-                info = { ...info, ...cookieInfo };
-              }
-            }
-            // Strategy 3: API call with session
-            if (!info?.email) {
-              const apiInfo = await prov.getAccountInfo(persistSes);
-              if (apiInfo) info = { ...info, ...apiInfo };
-            }
-          } catch {
-            /* ignore */
-          }
-
-          let syncId = accountId;
-          if (info?.email) {
-            const realId = `${prov.name}:${info.email}`;
-            // Remove temp entry, create proper one
-            await clearSessionStorage(getSession(accountId), accountId);
-            persistSes = null;
-            removeAccount(accountId);
-
-            // Re-copy cookies to the real account partition
-            const realSes = getSession(realId);
-            await copyProviderCookies(cookies, realSes, realId);
-
-            upsertAccount({
-              id: realId,
-              provider: prov.name,
-              email: info.email,
-              name: info.name,
-              status: 'ok',
-            });
-            syncId = realId;
-          } else if (info?.name) {
-            // Got name but no email — update the temp entry
-            updateAccount(accountId, { name: info.name });
-          }
-
-          buildMenu();
-
-          // Kick off the first sync immediately after a successful add.
-          syncAccount(syncId, onStatus).catch((e) => {
-            console.error(`Initial sync failed for ${syncId}: ${e.message}`);
-          });
-        } finally {
-          if (
-            accountId &&
-            persistSes &&
-            !getAccounts().some((account) => account.id === accountId)
-          ) {
-            await clearSessionStorage(persistSes, accountId);
-          }
-        }
-      } catch (e) {
-        console.error(`Add account failed: ${e.message}`);
-      }
+      if (!(await confirmChatGptSideEffect(prov))) return;
+      await addAccount(prov, {
+        openLoginWindow,
+        getSession,
+        upsertAccount,
+        updateAccount,
+        removeAccount,
+        getAccounts,
+        onAccountsChanged: buildMenu,
+        startInitialSync: (id) =>
+          syncAccount(id, onStatus).catch((e) => {
+            console.error(`Initial sync failed for ${id}: ${e.message}`);
+          }),
+        logger: (message) => console.log(message),
+      });
     },
   }));
 
@@ -684,40 +573,43 @@ function buildVaultSelection(result) {
   return update;
 }
 
-async function copyProviderCookies(cookies, targetSession, targetLabel) {
-  console.log(`[tray] Copying ${cookies.length} cookies to ${targetLabel}`);
-  for (const cookie of cookies) {
-    const details = {
-      url: `https://${cookie.domain.replace(/^\./, '')}${cookie.path}`,
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path,
-      secure: cookie.secure,
-      httpOnly: cookie.httpOnly,
-      expirationDate: cookie.expirationDate,
-    };
+// ChatGPT is the only provider where syncing has a visible side effect on the
+// provider's own UI, so warn once before the user commits to adding one.
+// Returns false when the user backs out.
+async function confirmChatGptSideEffect(prov) {
+  if (prov.name !== 'openai') return true;
+  if (store.get('chatgpt.skipAddAccountWarning', false)) return true;
 
-    if (cookie.sameSite) {
-      details.sameSite = cookie.sameSite;
-    }
-
-    try {
-      await targetSession.cookies.set(details);
-    } catch (e) {
-      console.log(`[tray] Cookie copy failed for ${targetLabel}: ${cookie.name}: ${e.message}`);
-    }
-  }
-}
-
-async function clearSessionStorage(ses, label) {
+  if (process.platform === 'darwin') app.dock?.show();
   try {
-    await ses.clearStorageData();
-    console.log(`[tray] Cleared session storage for ${label}`);
-    return true;
-  } catch (e) {
-    console.log(`[tray] Could not clear session storage for ${label}: ${e.message}`);
-    return false;
+    const focusWin = new BrowserWindow({ show: false });
+    const res = await dialog.showMessageBox(focusWin, {
+      type: 'info',
+      buttons: ['Sign in to ChatGPT', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Heads up — ChatGPT-only side effect',
+      message: "Reading a chat inevitably bumps it to the top of ChatGPT's sidebar.",
+      detail:
+        "ChatGPT's API has no read-only fetch — every conversation chatdump " +
+        'reads bumps its server-side update_time, so threads jump to the top ' +
+        'of your ChatGPT sidebar one by one as sync runs.\n\n' +
+        'chatdump reads them oldest-touched first, so once sync finishes the ' +
+        'sidebar settles back to its natural order (most-recently-used at top). ' +
+        'The disturbance is temporary.\n\n' +
+        'Claude and Gemini are not affected.',
+      checkboxLabel: "Don't show this again",
+      checkboxChecked: false,
+      noLink: true,
+    });
+    focusWin.destroy();
+    const proceed = res.response === 0;
+    // Only remember the opt-out when the user actually goes ahead; backing
+    // out should not silently suppress the warning next time.
+    if (proceed && res.checkboxChecked) store.set('chatgpt.skipAddAccountWarning', true);
+    return proceed;
+  } finally {
+    if (process.platform === 'darwin') app.dock?.hide();
   }
 }
 

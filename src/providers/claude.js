@@ -1,5 +1,6 @@
 const { makeRequest, shouldRethrowProviderError } = require('./request');
 const { sanitizeFilenameTitle } = require('../path-utils');
+const { sleep } = require('../sleep');
 
 const BASE = 'https://claude.ai';
 
@@ -83,7 +84,7 @@ const provider = {
       }
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
-      await new Promise((r) => setTimeout(r, 500));
+      await sleep(500, options.signal);
       try {
         const full = await makeRequest(
           `${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`,

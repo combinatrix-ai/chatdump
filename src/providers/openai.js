@@ -7,6 +7,7 @@ const {
 } = require('./request');
 const { withRetry } = require('./retry');
 const { sanitizeFilenameTitle } = require('../path-utils');
+const { sleep } = require('../sleep');
 
 const BASE = 'https://chatgpt.com';
 
@@ -208,7 +209,7 @@ const provider = {
     // count on the final page. Don't display it as a denominator.
     while (true) {
       if (options.signal?.aborted) return { failed: [] };
-      await new Promise((r) => setTimeout(r, 1000));
+      await sleep(1000, options.signal);
       const page = await withRetry(
         () =>
           makeRequest(
@@ -223,6 +224,7 @@ const provider = {
           ),
         {
           maxAttempts: 5,
+          signal: options.signal,
           getDelayMs: (attempt) => Math.min(120000, 5000 * 2 ** (attempt - 1)),
           onRetry: (e, attempt, maxAttempts, backoff) => {
             console.log(
@@ -297,19 +299,6 @@ const provider = {
     const minDelay = 8000;
     const maxDelay = 30000;
     const jitter = (ms) => Math.round(ms * (0.8 + Math.random() * 0.4));
-    const sleep = (ms) =>
-      new Promise((resolve) => {
-        if (options.signal?.aborted) return resolve();
-        const t = setTimeout(resolve, ms);
-        options.signal?.addEventListener(
-          'abort',
-          () => {
-            clearTimeout(t);
-            resolve();
-          },
-          { once: true },
-        );
-      });
     let consecutiveFails = 0;
 
     for (let i = 0; i < toFetch.length; i++) {
@@ -332,7 +321,7 @@ const provider = {
         }
       }
 
-      await sleep(jitter(delay));
+      await sleep(jitter(delay), options.signal);
       if (options.signal?.aborted) break;
 
       let success = false;
@@ -351,6 +340,7 @@ const provider = {
             ),
           {
             maxAttempts: 5,
+            signal: options.signal,
             getDelayMs: (attempt) => Math.min(120000, 5000 * 2 ** (attempt - 1)),
             onRetry: (e, attempt, maxAttempts, backoff) => {
               consecutiveFails++;
@@ -390,7 +380,7 @@ const provider = {
         console.log(
           `[openai] ${consecutiveFails} consecutive retryable failures, pausing 5 minutes...`,
         );
-        await sleep(300000);
+        await sleep(300000, options.signal);
         if (options.signal?.aborted) break;
         consecutiveFails = 0;
         delay = 10000;

@@ -1,6 +1,4 @@
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const { sleep } = require('../sleep');
 
 function isRetryableHttpError(error) {
   const status = error?.statusCode;
@@ -13,6 +11,7 @@ async function withRetry(operation, options = {}) {
     getDelayMs = (attempt) => 1000 * 2 ** (attempt - 1),
     shouldRetry = isRetryableHttpError,
     onRetry,
+    signal,
   } = options;
 
   let lastError = null;
@@ -27,7 +26,9 @@ async function withRetry(operation, options = {}) {
 
       const delayMs = getDelayMs(attempt, e);
       onRetry?.(e, attempt, maxAttempts, delayMs);
-      await sleep(delayMs);
+      // Wake early on abort: the next attempt then fails fast against the
+      // aborted signal instead of sitting out a two-minute backoff.
+      await sleep(delayMs, signal);
     }
   }
 

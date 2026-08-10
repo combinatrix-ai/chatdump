@@ -13,6 +13,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { encode, createLineDecoder } = require('./ipc-protocol');
+const { sleep } = require('./sleep');
 
 const APP_BUNDLE_ID = 'ai.combinatrix.chatdump';
 const CONNECT_RETRY_MS = 150;
@@ -37,10 +38,6 @@ function connectOnce(socketPath) {
     });
     socket.once('error', reject);
   });
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function newRequestId() {

@@ -1,6 +1,7 @@
 const { makeRawPostRequest, makeRawRequest, shouldRethrowProviderError } = require('./request');
 const { withRetry } = require('./retry');
 const { sanitizeFilenameTitle } = require('../path-utils');
+const { sleep } = require('../sleep');
 
 const BASE = 'https://gemini.google.com';
 const BATCH_EXEC = `${BASE}/_/BardChatUi/data/batchexecute`;
@@ -101,7 +102,7 @@ const provider = {
       }
       const conv = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
-      await sleep(500);
+      await sleep(500, options.signal);
       try {
         const msgPayload = JSON.stringify([
           conv.id,
@@ -228,6 +229,7 @@ async function batchExecute(ses, tokens, rpcId, payload, signal) {
       ),
     {
       maxAttempts: 3,
+      signal,
       getDelayMs: (attempt) => [2000, 5000, 10000][attempt - 1] || 10000,
       onRetry: (e, attempt, maxAttempts, delayMs) => {
         console.log(
@@ -272,7 +274,7 @@ async function fetchConversationListPages(ses, tokens, signal) {
 
     pageToken = parsed.nextToken;
     if (signal?.aborted) break;
-    await sleep(LIST_PAGE_DELAY_MS);
+    await sleep(LIST_PAGE_DELAY_MS, signal);
   }
 
   return { conversations, failed };
@@ -329,10 +331,6 @@ function parseConversationListResult(raw) {
   }
 
   return { conversations, frameSeen, nextToken };
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseConversationMessages(raw) {

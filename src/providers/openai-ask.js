@@ -1,4 +1,5 @@
 const { BrowserWindow } = require('electron');
+const { sleep } = require('../sleep');
 
 const BASE = 'https://chatgpt.com';
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -74,7 +75,7 @@ async function waitFor(win, fn, args, options) {
     } catch (e) {
       lastError = e.message;
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await sleep(intervalMs);
   }
 
   throw new Error(`${options.label || 'Condition'} timed out${lastError ? `: ${lastError}` : ''}`);
@@ -176,7 +177,7 @@ async function getConversationLocationAfterAnswer(win, fallbackHref) {
   while (Date.now() - startedAt < 10000) {
     latest = await evaluate(win, getConversationLocation);
     if (latest?.ok) return latest.value;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await sleep(500);
   }
 
   const href = latest?.value?.href || fallbackHref || win.webContents.getURL();
@@ -204,7 +205,7 @@ async function waitForStableAnswer(win, beforeCount, timeoutMs) {
         return latest.value;
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await sleep(1500);
   }
 
   if (latest?.value?.text) return latest.value;
@@ -243,7 +244,7 @@ async function askChatGptInBrowser(ses, options = {}) {
     });
     log('inserting prompt');
     await win.webContents.insertText(options.prompt);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await sleep(500);
 
     log('submitting prompt');
     try {

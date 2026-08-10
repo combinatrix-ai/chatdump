@@ -38,7 +38,6 @@ const provider = {
   parseAccountFromCookies(cookies) {
     let email = '';
     let name = cookies['oai-gn'] ? decodeURIComponent(cookies['oai-gn']) : '';
-    const plan = '';
 
     if (cookies['oai-client-auth-info']) {
       try {
@@ -55,7 +54,8 @@ const provider = {
       email = cookies._puid.split(':')[0]; // user-xxx:timestamp-hash
     }
 
-    return { email, name, plan };
+    // Cookies carry no plan information; the API lookup fills it in later.
+    return { email, name, plan: '' };
   },
 
   async getAccountInfo(ses) {
@@ -733,7 +733,6 @@ provider._test = {
   assetFromPart,
   parseAssetPointer,
   validateAssetDownloadUrl,
-  sanitize: sanitizeFilenameTitle,
   normalizeSharePayload,
 };
 

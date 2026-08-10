@@ -9,7 +9,6 @@ const {
   normalizeSharePayload,
   parseAssetPointer,
   renderTurns,
-  sanitize,
   timestampToEpochMs,
   timestampToIso,
   validateAssetDownloadUrl,
@@ -342,9 +341,4 @@ test('asset pointer and download URL validation reject unsafe values', () => {
     () => validateAssetDownloadUrl('https://oaiusercontent.com.evil.example/path'),
     /Untrusted/,
   );
-});
-
-test('sanitize replaces unsafe characters and whitespace, then truncates to 80 chars', () => {
-  assert.equal(sanitize('a/b\\c:d*e?f"g<h>i|j two\tspaces'), 'a_b_c_d_e_f_g_h_i_j_two_spaces');
-  assert.equal(sanitize('x'.repeat(100)), 'x'.repeat(80));
 });

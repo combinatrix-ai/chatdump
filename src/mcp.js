@@ -6,7 +6,7 @@
 // touches the Chromium session/cookies, so there is only ever one Electron
 // process, matching the CLI's list/sync delegation.
 const packageJson = require('../package.json');
-const { requestData, requestStream } = require('./ipc-client');
+const { requestData } = require('./ipc-client');
 
 function makeToolResponse(data) {
   return {
@@ -145,7 +145,7 @@ async function startMcpServer() {
     async (input) => {
       validateSyncInput(input);
 
-      const result = await requestStream('mcp.sync', input, (progress) => {
+      const result = await requestData('mcp.sync', input, (progress) => {
         server
           .sendLoggingMessage({
             level: progress.state === 'error' ? 'error' : 'info',

@@ -5,9 +5,9 @@
 // launch and everything else here is plain Node.
 //
 // runViaDelegation() streams CLI stdout/progress text to the terminal.
-// requestData()/requestStream() instead resolve with a structured `data`
-// payload (see ipc-protocol.js) for the MCP thin client, which needs JSON
-// results rather than printed text.
+// requestData() instead resolves with a structured `data` payload (see
+// ipc-protocol.js) for the MCP thin client, which needs JSON results rather
+// than printed text.
 const { execFile } = require('node:child_process');
 const net = require('node:net');
 const os = require('node:os');
@@ -161,12 +161,12 @@ async function runViaDelegation(
   });
 }
 
-// Send `cmd`/`args` to the running GUI and collect its response, calling
-// `onProgress({state,message,accountId})` for each `progress` message along
-// the way (used by streaming commands like mcp.sync). Resolves with the
-// `data` message's payload once the command completes; rejects on `error`
-// or a connection failure.
-async function sendAndCollect(cmd, args, onProgress) {
+// Send `cmd`/`args` to the running GUI (launching it if needed) and collect
+// its response. `onProgress({state,message,accountId})` is optional and is
+// called for each `progress` message along the way (used by streaming
+// commands like mcp.sync). Resolves with the `data` message's payload once
+// the command completes; rejects on `error` or a connection failure.
+async function requestData(cmd, args, onProgress) {
   const socketPath = getSocketPath();
   const id = newRequestId();
   const socket = await connectWithLaunch(socketPath);
@@ -206,23 +206,9 @@ async function sendAndCollect(cmd, args, onProgress) {
   });
 }
 
-// Send `cmd`/`args` to the running GUI (launching it if needed) and resolve
-// with the `data` message's payload. Used by the MCP thin client for
-// non-streaming tools (ask/conversation/accounts).
-async function requestData(cmd, args) {
-  return sendAndCollect(cmd, args);
-}
-
-// Like requestData, but also streams `progress` messages to `onProgress` as
-// they arrive. Used by the MCP thin client for `mcp.sync`.
-async function requestStream(cmd, args, onProgress) {
-  return sendAndCollect(cmd, args, onProgress);
-}
-
 module.exports = {
   runViaDelegation,
   requestData,
-  requestStream,
   _test: {
     getSocketPath,
     isGuiNotRunning,

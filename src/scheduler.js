@@ -205,9 +205,8 @@ async function syncAccount(accountId, onStatus, options = {}) {
           await withVaultAccessAsync(accountId, async () => {
             const id = getConversationId(conv, provider);
             if (id && id !== 'unknown') {
-              const rawPayload = provider.getRawCache ? provider.getRawCache(conv) : conv;
               try {
-                writeRawCache(vaultPath, provider.subdir, accountKey, id, rawPayload);
+                writeRawCache(vaultPath, provider.subdir, accountKey, id, conv);
               } catch (e) {
                 console.error(`[${account.provider}] Cache write failed for ${id}: ${e.message}`);
               }

@@ -7,9 +7,10 @@ const CLI_NAME = 'chatdump';
 // to be user-writable (common when Homebrew owns it on Intel) we symlink
 // without escalation; otherwise we fall back to an administrator prompt.
 const CANDIDATE_DIRS = ['/usr/local/bin'];
-// Target used when escalating via administrator privileges (the candidate dir
-// above is not writable by the current user).
-const ESCALATION_DIR = '/usr/local/bin';
+// Target used when escalating via administrator privileges (no candidate dir
+// above is writable by the current user). Derived from the candidate list so
+// the install target and the installed-status check can never drift apart.
+const ESCALATION_DIR = CANDIDATE_DIRS[0];
 
 function isCliInstallAvailable() {
   const { app } = require('electron');

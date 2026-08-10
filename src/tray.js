@@ -28,6 +28,7 @@ const { countSavedChats } = require('./archive-stats');
 const { getTrayIconState } = require('./tray-state');
 const { removeAccountSafely } = require('./account-removal');
 const { addAccount } = require('./account-add');
+const { shortenError, truncateMenuText } = require('./menu-text');
 
 let tray = null;
 const providerIconCache = new Map();
@@ -40,23 +41,6 @@ function providerIcon(provider) {
   img.setTemplateImage(true);
   providerIconCache.set(provider.name, img);
   return img;
-}
-
-function shortenError(msg) {
-  if (!msg) return '';
-  // Strip common prefix and trim down for the menu
-  let s = String(msg).replace(/^Sync failed:\s*/i, '');
-  // For "API error: 500 https://… body=…" keep just status
-  const apiMatch = s.match(/^API error:\s*(\d+)/i);
-  if (apiMatch) return `API ${apiMatch[1]}`;
-  if (s.length > 40) s = `${s.slice(0, 37)}…`;
-  return s;
-}
-
-function truncateMenuText(value, maxLength = 120) {
-  const text = String(value || '');
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1)}…`;
 }
 
 function buildAccountStatus(account) {
@@ -273,7 +257,7 @@ function buildMenu() {
         });
         const icon = log.level === 'error' ? '❌' : '✅';
         // Truncate long messages for menu display
-        const msg = log.message.length > 50 ? `${log.message.slice(0, 47)}...` : log.message;
+        const msg = truncateMenuText(log.message, 50, '...');
         sub.push({ label: `  ${icon} ${time}: ${msg}`, enabled: false });
       }
       sub.push({

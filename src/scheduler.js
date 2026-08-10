@@ -14,7 +14,12 @@ const { writeConversation } = require('./writer');
 const { writeRawCache } = require('./cache');
 const { reparseOutdated } = require('./reparse');
 const { appendLog } = require('./synclog');
-const { addProviderFailures, partialFailureMessage } = require('./sync-result');
+const {
+  addProviderFailures,
+  partialFailureMessage,
+  syncStartLabel,
+  syncSummaryMessage,
+} = require('./sync-result');
 
 let timeoutId = null;
 let schedulerRunning = false;
@@ -137,13 +142,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
       return;
     }
 
-    let startLabel = 'Sync started';
-    if (effectiveOptions.mode?.startsWith('full-sync:')) {
-      startLabel = `Full sync started (${effectiveOptions.mode.slice('full-sync:'.length)})`;
-    } else if (effectiveOptions.sinceDays != null) {
-      startLabel = `Sync started (last ${effectiveOptions.sinceDays}d)`;
-    }
-    appendLog(accountId, { level: 'info', message: startLabel });
+    appendLog(accountId, { level: 'info', message: syncStartLabel(effectiveOptions) });
     updateAccount(accountId, { lastError: null });
     setProgress(accountId, 'Authenticating…');
     onStatus?.('syncing', `${provider.displayName}: Authenticating...`, accountId);
@@ -265,14 +264,13 @@ async function syncAccount(accountId, onStatus, options = {}) {
       const failedConversations = addProviderFailures(failureDetails, fetchResult?.failed);
 
       const now = new Date().toISOString();
-      const stopped = abortController.signal.aborted;
-      const msg = stopped
-        ? `Stopped: ${written} files written, ${fetched} fetched`
-        : failedConversations
-          ? `Partial sync: ${written} files (${failedConversations} failed, ${fetched} fetched)`
-          : written > 0
-            ? `Synced ${written} files (${fetched} fetched)`
-            : `Up to date (${totalConvs || 0} checked)`;
+      const msg = syncSummaryMessage({
+        stopped: abortController.signal.aborted,
+        written,
+        fetched,
+        failedConversations,
+        totalConvs,
+      });
 
       appendLog(accountId, {
         level: failedConversations ? 'error' : 'info',
@@ -297,7 +295,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
     } catch (e) {
       let msg;
       if (abortController.signal.aborted) {
-        msg = `Stopped: ${written} files written, ${fetched} fetched`;
+        msg = syncSummaryMessage({ stopped: true, written, fetched });
         appendLog(accountId, {
           level: 'info',
           message: msg,

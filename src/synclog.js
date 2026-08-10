@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { app } = require('electron');
+const { sanitizeAccountKey } = require('./path-utils');
 
 const MAX_ENTRIES = 200;
 
@@ -9,8 +10,7 @@ function getLogDir() {
 }
 
 function getLogPath(accountId) {
-  const safe = accountId.replace(/[/\\:*?"<>|]/g, '_');
-  return path.join(getLogDir(), `${safe}.json`);
+  return path.join(getLogDir(), `${sanitizeAccountKey(accountId)}.json`);
 }
 
 function readLog(accountId) {

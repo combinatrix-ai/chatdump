@@ -9,6 +9,12 @@ test('path sanitizers share safe account and filename rules', () => {
   assert.equal(sanitizeFilenameTitle('x'.repeat(100)).length, 80);
 });
 
+test('sanitizeAccountKey replaces every path-unsafe character and tolerates no id', () => {
+  assert.equal(sanitizeAccountKey('a/b\\c:d*e?f"g<h>i|j'), 'a_b_c_d_e_f_g_h_i_j');
+  assert.equal(sanitizeAccountKey(''), '');
+  assert.equal(sanitizeAccountKey(undefined), '');
+});
+
 test('sanitizeFilenameTitle replaces unsafe characters and whitespace, then truncates', () => {
   assert.equal(
     sanitizeFilenameTitle('a/b\\c:d*e?f"g<h>i|j two\tspaces'),

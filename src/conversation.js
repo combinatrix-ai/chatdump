@@ -28,22 +28,6 @@ function requiredFetchMethod(kind) {
   return kind === 'share' ? 'fetchSharedConversationById' : 'fetchConversationById';
 }
 
-function unsupportedMessage(provider, name, kind) {
-  const label = provider.displayName || name;
-  return kind === 'share'
-    ? `${label} does not support fetching shared conversations yet`
-    : `${label} does not support conversation fetch by id yet`;
-}
-
-function getConversationProvider(name, kind = 'conversation') {
-  const provider = providers.getProvider(name);
-  if (!provider) throw new Error(`Unknown provider: ${name}`);
-  if (typeof provider[requiredFetchMethod(kind)] !== 'function') {
-    throw new Error(unsupportedMessage(provider, name, kind));
-  }
-  return provider;
-}
-
 function selectConversationAccount(
   input = {},
   kind = 'conversation',
@@ -64,8 +48,10 @@ async function getConversation(input = {}) {
     ? { kind: 'share', id: String(input.shareId).trim() }
     : parseConversationRef(input.conversationId);
 
+  // selectConversationAccount already rejected providers that cannot serve
+  // this kind of fetch.
   const account = selectConversationAccount(input, ref.kind);
-  const provider = getConversationProvider(account.provider, ref.kind);
+  const provider = providers.getProvider(account.provider);
   await ensureAuthenticated(account.provider, account.id, { interactive: false });
 
   const raw =

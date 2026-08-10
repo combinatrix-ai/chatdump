@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { _test } = require('../src/providers/openai');
+const openai = require('../src/providers/openai');
+
+const { _test } = openai;
 
 const {
   extractDocument,
@@ -341,4 +343,69 @@ test('asset pointer and download URL validation reject unsafe values', () => {
     () => validateAssetDownloadUrl('https://oaiusercontent.com.evil.example/path'),
     /Untrusted/,
   );
+});
+
+test('convertToMarkdown and makeFilename keep the ChatGPT archive format', () => {
+  const conversation = {
+    conversation_id: 'aaaabbbb-cccc-dddd-eeee-ffff00001111',
+    title: 'ChatGPT: notes',
+    create_time: 1767322445,
+    default_model_slug: 'gpt-5',
+    current_node: 'b',
+    mapping: {
+      a: {
+        id: 'a',
+        message: {
+          id: 'a',
+          author: { role: 'user' },
+          create_time: 1767322445,
+          content: { content_type: 'text', parts: ['hi'] },
+        },
+      },
+      b: {
+        id: 'b',
+        parent: 'a',
+        message: {
+          id: 'b',
+          author: { role: 'assistant' },
+          create_time: 1767322500,
+          content: { content_type: 'text', parts: ['hello'] },
+        },
+      },
+    },
+  };
+
+  assert.equal(
+    openai.convertToMarkdown(conversation),
+    [
+      '---',
+      'title: "ChatGPT: notes"',
+      'created: 2026-01-02T02:54:05.000Z',
+      // Newest message time, not the listing's update_time.
+      'updated: 2026-01-02T02:55:00.000Z',
+      'model: gpt-5',
+      'source: chatgpt',
+      'id: "aaaabbbb-cccc-dddd-eeee-ffff00001111"',
+      'parser_version: 4',
+      '---',
+      '',
+      '## User',
+      '',
+      'hi',
+      '',
+      '## Assistant',
+      '',
+      'hello',
+      '',
+    ].join('\n'),
+  );
+  assert.equal(openai.makeFilename(conversation), '2026-01-02_ChatGPT__notes_aaaabbbb.md');
+});
+
+test('a bare ChatGPT conversation still writes created and updated', () => {
+  assert.equal(
+    openai.convertToMarkdown({ mapping: {} }),
+    '---\ntitle: "Untitled"\ncreated: \nupdated: \nsource: chatgpt\nid: ""\nparser_version: 4\n---\n\n\n',
+  );
+  assert.equal(openai.makeFilename({}).slice(10), '_untitled_.md');
 });

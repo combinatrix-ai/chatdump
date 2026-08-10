@@ -1,6 +1,6 @@
 const { makeRawPostRequest, makeRawRequest, shouldRethrowProviderError } = require('./request');
 const { withRetry } = require('./retry');
-const { sanitizeFilenameTitle } = require('../path-utils');
+const { conversationFilename, conversationMarkdown } = require('./markdown');
 const { sleep } = require('../sleep');
 
 const BASE = 'https://gemini.google.com';
@@ -138,23 +138,6 @@ const provider = {
   },
 
   convertToMarkdown(conversation) {
-    const title = conversation.title || 'Untitled';
-    const ts = conversation.timestamp;
-    const created = ts ? new Date(ts).toISOString() : '';
-    const id = conversation.id || '';
-
-    const frontmatter = [
-      '---',
-      `title: ${JSON.stringify(title)}`,
-      `created: ${created}`,
-      'source: gemini',
-      `id: "${id}"`,
-      `parser_version: ${provider.parserVersion}`,
-      '---',
-    ]
-      .filter(Boolean)
-      .join('\n');
-
     const body = (conversation.messages || [])
       .map((msg) => {
         const role = msg.role === 'user' ? 'User' : 'Assistant';
@@ -163,21 +146,34 @@ const provider = {
       .filter(Boolean)
       .join('\n\n');
 
-    return `${frontmatter}\n\n${body}\n`;
+    // No `updated`: the list RPC only reports one timestamp per conversation.
+    return conversationMarkdown(
+      {
+        title: conversation.title,
+        created: isoFromTimestamp(conversation.timestamp),
+        source: 'gemini',
+        id: conversation.id,
+        parserVersion: provider.parserVersion,
+      },
+      body,
+    );
   },
 
   makeFilename(conversation) {
-    const ts = conversation.timestamp;
-    const date = ts
-      ? new Date(ts).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
-    const title = sanitizeFilenameTitle(conversation.title || 'untitled');
-    const idSuffix = (conversation.id || '').replace('c_', '').slice(0, 8);
-    return `${date}_${title}_${idSuffix}.md`;
+    return conversationFilename({
+      date: isoFromTimestamp(conversation.timestamp),
+      title: conversation.title,
+      // Gemini ids carry a c_ prefix that the archive filename drops.
+      id: (conversation.id || '').replace('c_', ''),
+    });
   },
 };
 
 // --- Helpers ---
+
+function isoFromTimestamp(ts) {
+  return ts ? new Date(ts).toISOString() : '';
+}
 
 async function getPageTokens(ses, signal) {
   try {

@@ -6,7 +6,7 @@ const {
   shouldRethrowProviderError,
 } = require('./request');
 const { withRetry } = require('./retry');
-const { sanitizeFilenameTitle } = require('../path-utils');
+const { conversationFilename, conversationMarkdown } = require('./markdown');
 const { sleep } = require('../sleep');
 
 const BASE = 'https://chatgpt.com';
@@ -403,44 +403,35 @@ const provider = {
   },
 
   convertToMarkdown(conversation, options = {}) {
-    const title = conversation.title || 'Untitled';
-    const created = timestampToIso(conversation.create_time);
     const pathMessages = getCurrentPathMessages(
       conversation.mapping || {},
       conversation.current_node,
     );
-    const updated = getLatestMessageCreateTime(pathMessages);
-    const model = conversation.default_model_slug || '';
-    const id = conversation.conversation_id || conversation.id || '';
-
-    const frontmatter = [
-      '---',
-      `title: ${JSON.stringify(title)}`,
-      `created: ${created}`,
-      `updated: ${updated}`,
-      model ? `model: ${model}` : null,
-      'source: chatgpt',
-      `id: "${id}"`,
-      `parser_version: ${provider.parserVersion}`,
-      '---',
-    ]
-      .filter(Boolean)
-      .join('\n');
-
     const document = extractDocument(pathMessages);
-    const assetPaths = options.assetPaths || {};
-    const body = renderTurns(document.turns, assetPaths);
+    const body = renderTurns(document.turns, options.assetPaths || {});
 
-    return `${frontmatter}\n\n${body}\n`;
+    // `updated` is the newest message time: the listing's update_time also
+    // moves when a conversation is merely opened.
+    return conversationMarkdown(
+      {
+        title: conversation.title,
+        created: timestampToIso(conversation.create_time),
+        updated: getLatestMessageCreateTime(pathMessages),
+        model: conversation.default_model_slug,
+        source: 'chatgpt',
+        id: provider.getId(conversation),
+        parserVersion: provider.parserVersion,
+      },
+      body,
+    );
   },
 
   makeFilename(conversation) {
-    const created =
-      timestampToIso(conversation.create_time).slice(0, 10) ||
-      new Date().toISOString().slice(0, 10);
-    const title = sanitizeFilenameTitle(conversation.title || 'untitled');
-    const idSuffix = (conversation.conversation_id || conversation.id || '').slice(0, 8);
-    return `${created}_${title}_${idSuffix}.md`;
+    return conversationFilename({
+      date: timestampToIso(conversation.create_time),
+      title: conversation.title,
+      id: provider.getId(conversation),
+    });
   },
 };
 

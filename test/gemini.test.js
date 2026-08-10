@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { _test } = require('../src/providers/gemini');
+const gemini = require('../src/providers/gemini');
+
+const { _test } = gemini;
 
 const { parseConversationListResult, parseConversationMessages, parseFrames } = _test;
 
@@ -78,4 +80,48 @@ test('parseConversationMessages extracts user and model text from turns', () => 
     { role: 'user', text: 'User prompt' },
     { role: 'model', text: 'Model answer' },
   ]);
+});
+
+test('convertToMarkdown and makeFilename keep the Gemini archive format', () => {
+  const conversation = {
+    id: 'c_abcdef0123456789',
+    title: 'Gemini: chat',
+    timestamp: 1767322445000,
+    messages: [
+      { role: 'user', text: 'hi' },
+      { role: 'model', text: 'hello' },
+    ],
+  };
+
+  assert.equal(
+    gemini.convertToMarkdown(conversation),
+    [
+      '---',
+      'title: "Gemini: chat"',
+      'created: 2026-01-02T02:54:05.000Z',
+      'source: gemini',
+      'id: "c_abcdef0123456789"',
+      'parser_version: 1',
+      '---',
+      '',
+      '## User',
+      '',
+      'hi',
+      '',
+      '## Assistant',
+      '',
+      'hello',
+      '',
+    ].join('\n'),
+  );
+  // The frontmatter keeps the c_ prefix; the filename drops it.
+  assert.equal(gemini.makeFilename(conversation), '2026-01-02_Gemini__chat_abcdef01.md');
+});
+
+test('a bare Gemini conversation writes no updated line', () => {
+  assert.equal(
+    gemini.convertToMarkdown({ messages: [] }),
+    '---\ntitle: "Untitled"\ncreated: \nsource: gemini\nid: ""\nparser_version: 1\n---\n\n\n',
+  );
+  assert.equal(gemini.makeFilename({}).slice(10), '_untitled_.md');
 });

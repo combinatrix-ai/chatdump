@@ -1,5 +1,5 @@
 const { makeRequest, shouldRethrowProviderError } = require('./request');
-const { sanitizeFilenameTitle } = require('../path-utils');
+const { conversationFilename, conversationMarkdown } = require('./markdown');
 const { sleep } = require('../sleep');
 
 const BASE = 'https://claude.ai';
@@ -104,26 +104,6 @@ const provider = {
   },
 
   convertToMarkdown(conversation) {
-    const title = conversation.name || 'Untitled';
-    const created = conversation.created_at || '';
-    const updated = conversation.updated_at || '';
-    const model = conversation.model || '';
-    const id = conversation.uuid || '';
-
-    const frontmatter = [
-      '---',
-      `title: ${JSON.stringify(title)}`,
-      `created: ${created}`,
-      `updated: ${updated}`,
-      model ? `model: ${model}` : null,
-      'source: claude',
-      `id: "${id}"`,
-      `parser_version: ${provider.parserVersion}`,
-      '---',
-    ]
-      .filter(Boolean)
-      .join('\n');
-
     const messages = (conversation.chat_messages || [])
       .map((msg) => {
         const role = msg.sender === 'human' ? 'Human' : 'Assistant';
@@ -132,14 +112,26 @@ const provider = {
       })
       .join('\n\n');
 
-    return `${frontmatter}\n\n${messages}\n`;
+    return conversationMarkdown(
+      {
+        title: conversation.name,
+        created: conversation.created_at,
+        updated: conversation.updated_at,
+        model: conversation.model,
+        source: 'claude',
+        id: conversation.uuid,
+        parserVersion: provider.parserVersion,
+      },
+      messages,
+    );
   },
 
   makeFilename(conversation) {
-    const date = (conversation.created_at || new Date().toISOString()).slice(0, 10);
-    const title = sanitizeFilenameTitle(conversation.name || 'untitled');
-    const idSuffix = (conversation.uuid || '').slice(0, 8);
-    return `${date}_${title}_${idSuffix}.md`;
+    return conversationFilename({
+      date: conversation.created_at,
+      title: conversation.name,
+      id: conversation.uuid,
+    });
   },
 };
 

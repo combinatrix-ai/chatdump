@@ -257,7 +257,7 @@ function buildMenu() {
         });
         const icon = log.level === 'error' ? '❌' : '✅';
         // Truncate long messages for menu display
-        const msg = truncateMenuText(log.message, 50, '...');
+        const msg = truncateMenuText(log.message, 50, { suffix: '...' });
         sub.push({ label: `  ${icon} ${time}: ${msg}`, enabled: false });
       }
       sub.push({

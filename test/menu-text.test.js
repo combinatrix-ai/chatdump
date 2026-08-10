@@ -19,8 +19,10 @@ test('truncateMenuText honours per-call-site limits and suffixes', () => {
   // Update-check errors: 120 -> 70, same ellipsis.
   assert.equal(truncateMenuText('e'.repeat(80), 70), `${'e'.repeat(69)}…`);
   // Activity log entries: 50 with the three-dot form.
-  assert.equal(truncateMenuText('m'.repeat(50), 50, '...'), 'm'.repeat(50));
-  assert.equal(truncateMenuText('m'.repeat(51), 50, '...'), `${'m'.repeat(47)}...`);
+  assert.equal(truncateMenuText('m'.repeat(50), 50, { suffix: '...' }), 'm'.repeat(50));
+  assert.equal(truncateMenuText('m'.repeat(51), 50, { suffix: '...' }), `${'m'.repeat(47)}...`);
+  // An explicit `keep` cuts earlier than the limit would.
+  assert.equal(truncateMenuText('k'.repeat(60), 40, { keep: 37 }), `${'k'.repeat(37)}…`);
 });
 
 test('shortenError strips the sync prefix and collapses API errors', () => {
@@ -31,9 +33,14 @@ test('shortenError strips the sync prefix and collapses API errors', () => {
   assert.equal(shortenError('API error: 429 rate limited'), 'API 429');
 });
 
-test('shortenError caps a long message at 40 characters', () => {
+// Trimming starts above 40 characters but keeps only 37 of them, so a trimmed
+// account error is 38 characters wide in the menu.
+test('shortenError trims past 40 characters down to 37 plus an ellipsis', () => {
+  assert.equal(shortenError('e'.repeat(39)), 'e'.repeat(39));
   assert.equal(shortenError('e'.repeat(40)), 'e'.repeat(40));
+  assert.equal(shortenError('e'.repeat(41)), `${'e'.repeat(37)}…`);
+
   const capped = shortenError('e'.repeat(200));
-  assert.equal(capped.length, 40);
-  assert.equal(capped, `${'e'.repeat(39)}…`);
+  assert.equal(capped.length, 38);
+  assert.equal(capped, `${'e'.repeat(37)}…`);
 });

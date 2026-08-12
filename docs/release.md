@@ -14,8 +14,8 @@ There are two ways to release:
 
 The workflow lives at [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 It runs on `macos-14` (Apple Silicon), imports your Developer ID cert into a
-temporary keychain, builds a universal binary, notarizes via notarytool,
-staples, verifies, and uploads artifacts to a GitHub Release.
+temporary keychain, builds separate arm64 and x64 binaries, notarizes via
+notarytool, staples, verifies, and uploads artifacts to a GitHub Release.
 
 ### One-time setup: GitHub secrets
 
@@ -121,8 +121,8 @@ without publishing.
    submits to Apple notarytool, and staples the ticket to the DMG.
 
    The signed artifacts land in `dist-electron/`:
-   - `chatdump-<version>-universal.dmg` (primary distributable)
-   - `chatdump-<version>-universal-mac.zip` (used for auto-update later)
+   - arm64 and x64 DMGs (direct downloads)
+   - arm64 and x64 ZIPs (used for auto-update)
 
 4. Verify the DMG passes Gatekeeper on a clean machine (or after clearing
    quarantine):

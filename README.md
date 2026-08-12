@@ -242,8 +242,9 @@ git tag v1.0.1
 git push origin v1.0.1
 ```
 
-GitHub Actions builds a universal binary, signs with the Developer ID cert,
-notarizes via Apple, staples, and attaches the DMG + zip to a GitHub Release.
+GitHub Actions builds separate arm64 and x64 binaries, signs them with the
+Developer ID cert, notarizes via Apple, staples, and attaches the DMGs + zips
+to a GitHub Release.
 
 For local builds, the one-time CI setup, or troubleshooting see
 [docs/release.md](docs/release.md).

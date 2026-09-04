@@ -26,6 +26,7 @@ const { showCliInstallResult } = require('./cli-install-ui');
 const { getUpdateState, checkForUpdates, quitAndInstall } = require('./updater');
 const { countSavedChats } = require('./archive-stats');
 const { getTrayIconState } = require('./tray-state');
+const { readStartAtLogin, toggleStartAtLogin } = require('./login-item');
 const { removeAccountSafely } = require('./account-removal');
 const { addAccount } = require('./account-add');
 const { shortenError, truncateMenuText } = require('./menu-text');
@@ -399,6 +400,21 @@ function buildMenu() {
     })),
   });
 
+  const startAtLogin = readStartAtLogin(app);
+  template.push({
+    label: startAtLogin.ok ? 'Start at Login' : 'Start at Login (Unavailable)',
+    type: 'checkbox',
+    checked: startAtLogin.enabled,
+    enabled: startAtLogin.ok,
+    click: async () => {
+      const result = toggleStartAtLogin(app);
+      // Rebuild before showing an error so a successful change is visible
+      // immediately and a failed change falls back to the OS readback.
+      buildMenu();
+      if (!result.ok) await showStartAtLoginError(result.error);
+    },
+  });
+
   template.push({ type: 'separator' });
 
   // Default vault
@@ -497,6 +513,21 @@ function buildUpdateItem() {
     enabled: update.supported,
     click: () => checkForUpdates(),
   };
+}
+
+async function showStartAtLoginError(error) {
+  try {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Could not update Start at Login',
+      message: 'Could not update Start at Login',
+      detail: error || 'Unknown error',
+    });
+  } catch (dialogError) {
+    // Showing an error should never turn a recoverable OS setting failure into
+    // an uncaught rejection in the tray click handler.
+    console.error(`[tray] Could not show Start at Login error: ${dialogError.message}`);
+  }
 }
 
 function shortenPath(p) {

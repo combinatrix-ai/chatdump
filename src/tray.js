@@ -407,7 +407,7 @@ function buildMenu() {
     checked: startAtLogin.enabled,
     enabled: startAtLogin.ok,
     click: async () => {
-      const result = toggleStartAtLogin(app);
+      const result = toggleStartAtLogin(app, store);
       // Rebuild before showing an error so a successful change is visible
       // immediately and a failed change falls back to the OS readback.
       buildMenu();

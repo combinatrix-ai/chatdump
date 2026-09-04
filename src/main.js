@@ -20,6 +20,7 @@ const { isCliInstallAvailable, installCliTool, getCliInstallStatus } = require('
 const { showCliInstallResult } = require('./cli-install-ui');
 const { startIpcServer, stopIpcServer } = require('./ipc-server');
 const { initUpdater, stopUpdater } = require('./updater');
+const { applyStartAtLoginDefault } = require('./login-item');
 
 // Electron's default User-Agent identifies both Electron and this application.
 // Use the bundled Chromium major version so browser windows and net.request
@@ -127,6 +128,11 @@ if (hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     ensureDefaultVaultPath();
     await cleanupOrphanPartitions();
+
+    const startAtLogin = applyStartAtLoginDefault(app, store);
+    if (!startAtLogin.ok) {
+      console.error(`[main] Could not apply Start at Login default: ${startAtLogin.error}`);
+    }
 
     const { onStatus, buildMenu } = createTray();
     startIpcServer();

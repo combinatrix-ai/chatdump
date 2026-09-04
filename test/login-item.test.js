@@ -1,6 +1,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { readStartAtLogin, setStartAtLogin, toggleStartAtLogin } = require('../src/login-item');
+const {
+  applyStartAtLoginDefault,
+  readStartAtLogin,
+  setStartAtLogin,
+  toggleStartAtLogin,
+} = require('../src/login-item');
 
 function fakeApp(initial = false) {
   const state = { openAtLogin: initial };
@@ -15,6 +20,19 @@ function fakeApp(initial = false) {
     setLoginItemSettings(settings) {
       calls.push(['set', settings]);
       state.openAtLogin = settings.openAtLogin;
+    },
+  };
+}
+
+function fakeStore(initial = {}) {
+  const values = { ...initial };
+  return {
+    values,
+    get(key, fallback) {
+      return values[key] ?? fallback;
+    },
+    set(key, value) {
+      values[key] = value;
     },
   };
 }
@@ -80,4 +98,67 @@ test('reports when the OS does not apply the requested value', () => {
     enabled: false,
     error: 'The system reported Start at Login is disabled after the change.',
   });
+});
+
+test('applies Start at Login once when no default has been recorded', () => {
+  const app = fakeApp(false);
+  const store = fakeStore();
+
+  assert.deepEqual(applyStartAtLoginDefault(app, store), {
+    ok: true,
+    enabled: true,
+    applied: true,
+  });
+  assert.equal(store.values.startAtLoginDefaultApplied, true);
+});
+
+test('does not apply the default from an unpackaged development run', () => {
+  const app = { ...fakeApp(false), isPackaged: false };
+  const store = fakeStore();
+
+  assert.deepEqual(applyStartAtLoginDefault(app, store), {
+    ok: true,
+    enabled: false,
+    applied: false,
+  });
+  assert.deepEqual(app.calls, [['get']]);
+  assert.equal(store.values.startAtLoginDefaultApplied, undefined);
+});
+
+test('preserves the current OS setting after the default was applied', () => {
+  const app = fakeApp(false);
+  const store = fakeStore({ startAtLoginDefaultApplied: true });
+
+  assert.deepEqual(applyStartAtLoginDefault(app, store), {
+    ok: true,
+    enabled: false,
+    applied: false,
+  });
+  assert.deepEqual(app.calls, [['get']]);
+});
+
+test('does not record a default that the OS failed to apply', () => {
+  const app = fakeApp(false);
+  app.setLoginItemSettings = () => {};
+  const store = fakeStore();
+
+  const result = applyStartAtLoginDefault(app, store);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.applied, false);
+  assert.equal(store.values.startAtLoginDefaultApplied, undefined);
+});
+
+test('preserves an explicit opt-out instead of reapplying the default', () => {
+  const app = fakeApp(true);
+  const store = fakeStore();
+
+  assert.deepEqual(toggleStartAtLogin(app, store), { ok: true, enabled: false });
+  assert.deepEqual(applyStartAtLoginDefault(app, store), {
+    ok: true,
+    enabled: false,
+    applied: false,
+  });
+
+  assert.equal(store.values.startAtLoginDefaultApplied, true);
 });

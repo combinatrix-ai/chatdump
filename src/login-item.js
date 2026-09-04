@@ -2,6 +2,8 @@
 // error handling here makes the tray menu easy to exercise without starting
 // Electron.
 
+const DEFAULT_APPLIED_KEY = 'startAtLoginDefaultApplied';
+
 function errorMessage(error) {
   if (error && typeof error.message === 'string' && error.message) return error.message;
   return String(error || 'Unknown error');
@@ -49,13 +51,31 @@ function setStartAtLogin(appApi, enabled) {
   return actual;
 }
 
-function toggleStartAtLogin(appApi) {
+function toggleStartAtLogin(appApi, storeApi) {
   const current = readStartAtLogin(appApi);
   if (!current.ok) return current;
-  return setStartAtLogin(appApi, !current.enabled);
+  const result = setStartAtLogin(appApi, !current.enabled);
+  if (result.ok && storeApi) storeApi.set(DEFAULT_APPLIED_KEY, true);
+  return result;
+}
+
+function applyStartAtLoginDefault(appApi, storeApi) {
+  // Development runs should never register the Electron development binary as
+  // a login item. Explicit menu changes remain available for local testing.
+  if (appApi.isPackaged === false) {
+    return { ...readStartAtLogin(appApi), applied: false };
+  }
+  if (storeApi.get(DEFAULT_APPLIED_KEY, false)) {
+    return { ...readStartAtLogin(appApi), applied: false };
+  }
+
+  const result = setStartAtLogin(appApi, true);
+  if (result.ok) storeApi.set(DEFAULT_APPLIED_KEY, true);
+  return { ...result, applied: result.ok };
 }
 
 module.exports = {
+  applyStartAtLoginDefault,
   readStartAtLogin,
   setStartAtLogin,
   toggleStartAtLogin,

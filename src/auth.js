@@ -1,6 +1,9 @@
 const { BrowserWindow, session, app } = require('electron');
 const { getProvider } = require('./providers');
-const { configureProviderSessionPermissions } = require('./session-permissions');
+const {
+  configureProviderSessionPermissions,
+  configureProviderWebContents,
+} = require('./session-permissions');
 
 function getSession(accountId) {
   const ses = accountId ? session.fromPartition(`persist:${accountId}`) : session.defaultSession;
@@ -59,6 +62,7 @@ function openLoginWindow(providerName, accountId) {
         session: ses,
       },
     });
+    configureProviderWebContents(win.webContents);
 
     let resolved = false;
 

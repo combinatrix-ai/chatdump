@@ -23,7 +23,17 @@ function configureProviderSessionPermissions(ses) {
   return ses;
 }
 
+// Electron currently disables Chromium's LocalNetworkAccessChecks feature, so
+// the permission handlers above are not sufficient on their own. Prevent the
+// provider page's WebRTC stack from enumerating local interfaces or opening
+// direct UDP sockets, either of which can trigger macOS Local Network privacy.
+function configureProviderWebContents(webContents) {
+  webContents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
+  return webContents;
+}
+
 module.exports = {
   configureProviderSessionPermissions,
+  configureProviderWebContents,
   _test: { isLocalNetworkPermission },
 };

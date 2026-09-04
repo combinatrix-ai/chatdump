@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   configureProviderSessionPermissions,
+  configureProviderWebContents,
   _test: { isLocalNetworkPermission },
 } = require('../src/session-permissions');
 
@@ -10,6 +11,16 @@ test('recognizes Chromium local-network permission names', () => {
   assert.equal(isLocalNetworkPermission('local-network-access'), true);
   assert.equal(isLocalNetworkPermission('loopback-network'), true);
   assert.equal(isLocalNetworkPermission('notifications'), false);
+});
+
+test('provider web contents disable direct WebRTC UDP and local interface exposure', () => {
+  const policies = [];
+  const webContents = {
+    setWebRTCIPHandlingPolicy: (policy) => policies.push(policy),
+  };
+
+  assert.equal(configureProviderWebContents(webContents), webContents);
+  assert.deepEqual(policies, ['disable_non_proxied_udp']);
 });
 
 test('provider sessions deny only local-network permission checks and requests', () => {

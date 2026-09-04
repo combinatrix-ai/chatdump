@@ -1,5 +1,6 @@
 const { BrowserWindow } = require('electron');
 const { sleep } = require('../sleep');
+const { configureProviderWebContents } = require('../session-permissions');
 
 const BASE = 'https://chatgpt.com';
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -224,6 +225,7 @@ async function askChatGptInBrowser(ses, options = {}) {
       session: ses,
     },
   });
+  configureProviderWebContents(win.webContents);
 
   try {
     log('loading ChatGPT');

@@ -1,9 +1,10 @@
 const { BrowserWindow, session, app } = require('electron');
 const { getProvider } = require('./providers');
+const { configureProviderSessionPermissions } = require('./session-permissions');
 
 function getSession(accountId) {
-  if (!accountId) return session.defaultSession;
-  return session.fromPartition(`persist:${accountId}`);
+  const ses = accountId ? session.fromPartition(`persist:${accountId}`) : session.defaultSession;
+  return configureProviderSessionPermissions(ses);
 }
 
 // Find auth cookie — handles both exact name and prefix (split cookies like .0, .1)
@@ -43,7 +44,7 @@ function openLoginWindow(providerName, accountId) {
   if (!prov) return Promise.reject(new Error(`Unknown provider: ${providerName}`));
 
   const partitionName = accountId ? `persist:${accountId}` : `temp:login-${Date.now()}`;
-  const ses = session.fromPartition(partitionName);
+  const ses = configureProviderSessionPermissions(session.fromPartition(partitionName));
 
   return new Promise((resolve, reject) => {
     if (process.platform === 'darwin') app.dock?.show();

@@ -107,3 +107,27 @@ test('convertToMarkdown writes org_uuid and org_name when the conversation has t
   );
   assert.doesNotMatch(claude.convertToMarkdown(conv('y')), /org_uuid/);
 });
+
+test('project names are listed for every chat organization, and only a complete list is reported', async () => {
+  routes = {
+    [BASE]: [
+      { uuid: A, name: 'Personal', capabilities: ['chat'] },
+      { uuid: B, name: 'Team', capabilities: ['chat'] },
+    ],
+    [`${BASE}/${A}/projects`]: [{ uuid: 'p-a', name: 'Home' }],
+    [`${BASE}/${B}/projects`]: [{ uuid: 'p-b', name: 'Launch' }],
+    [`${BASE}/${A}/chat_conversations`]: [],
+    [`${BASE}/${B}/chat_conversations`]: [],
+  };
+  let got;
+  await claude.fetchConversations(null, {}, null, null, { onProjects: (p) => (got = p) });
+  assert.deepEqual(got, [
+    { uuid: 'p-a', name: 'Home', orgId: A },
+    { uuid: 'p-b', name: 'Launch', orgId: B },
+  ]);
+
+  routes[`${BASE}/${B}/projects`] = new Error('HTTP 404');
+  got = undefined;
+  await claude.fetchConversations(null, {}, null, null, { onProjects: (p) => (got = p) });
+  assert.equal(got, undefined);
+});

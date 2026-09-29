@@ -258,7 +258,18 @@ async function syncAccount(accountId, onStatus, options = {}) {
           }
         },
         onConversation,
-        effectiveOptions,
+        {
+          ...effectiveOptions,
+          // Claude: project names for the cached conversations' project_uuid (read by Command Center and other consumers).
+          onProjects: (projects) =>
+            withVaultAccessAsync(accountId, async () => {
+              try {
+                writeRawCache(vaultPath, provider.subdir, accountKey, '_projects', projects);
+              } catch (e) {
+                console.error(`[${account.provider}] Project cache write failed: ${e.message}`);
+              }
+            }),
+        },
       );
 
       const failedConversations = addProviderFailures(failureDetails, fetchResult?.failed);

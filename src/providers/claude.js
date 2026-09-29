@@ -65,6 +65,35 @@ const provider = {
     // A login can belong to several organizations (e.g. a personal plan and a Team
     // workspace). Export every one that has chat, not just the first.
     const chatOrgs = chatOrganizations(orgs);
+
+    // Project names: conversations carry only project_uuid, so list each organization's
+    // projects once per sync. Best effort: a failure here never stops the conversation export.
+    if (options.onProjects) {
+      const projects = [];
+      let listedAll = true;
+      for (const org of chatOrgs) {
+        try {
+          const list = await makeRequest(
+            `${BASE}/api/organizations/${org.uuid}/projects`,
+            ses,
+            undefined,
+            { signal: options.signal },
+          );
+          if (Array.isArray(list)) {
+            for (const p of list) {
+              if (p?.uuid) projects.push({ uuid: p.uuid, name: p.name || '', orgId: org.uuid });
+            }
+          }
+        } catch (e) {
+          if (shouldRethrowProviderError(e, options.signal)) throw e;
+          listedAll = false;
+          console.error(`[claude] Project list failed for org ${org.uuid}: ${e.message}`);
+        }
+      }
+      // A partial list would drop names an earlier sync saved, so write only a complete one.
+      if (listedAll) await options.onProjects(projects);
+    }
+
     const failed = [];
     const toFetch = [];
     let listed = 0;

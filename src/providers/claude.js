@@ -1,4 +1,4 @@
-const { makeRequest, shouldRethrowProviderError } = require('./request');
+const { isRequestAbortedError, makeRequest, shouldRethrowProviderError } = require('./request');
 const { conversationFilename, conversationMarkdown } = require('./markdown');
 const { sleep } = require('../sleep');
 
@@ -61,38 +61,56 @@ const provider = {
       signal: options.signal,
     });
     if (!orgs || orgs.length === 0) return { failed: [] };
-    const orgId = orgs[0].uuid;
 
-    const conversations = await makeRequest(
-      `${BASE}/api/organizations/${orgId}/chat_conversations`,
-      ses,
-      undefined,
-      { signal: options.signal },
-    );
-    const toFetch = conversations.filter((c) => {
-      const last = timestamps[c.uuid];
-      return !last || last !== c.updated_at;
-    });
-
-    console.log(`[claude] ${toFetch.length}/${conversations.length} to fetch`);
+    // A login can belong to several organizations (e.g. a personal plan and a Team
+    // workspace). Export every one that has chat, not just the first.
+    const chatOrgs = chatOrganizations(orgs);
     const failed = [];
+    const toFetch = [];
+    let listed = 0;
+    for (let o = 0; o < chatOrgs.length; o++) {
+      const org = chatOrgs[o];
+      let conversations;
+      try {
+        conversations = await makeRequest(
+          `${BASE}/api/organizations/${org.uuid}/chat_conversations`,
+          ses,
+          undefined,
+          { signal: options.signal },
+        );
+      } catch (e) {
+        // The first organization keeps the old behavior (auth errors stop the sync).
+        // A later one that refuses listing must not cost the others.
+        if (o === 0 || options.signal?.aborted || isRequestAbortedError(e)) throw e;
+        failed.push({ id: `org:${org.uuid}`, error: e.message });
+        console.error(`[claude] Failed to list org ${org.uuid}: ${e.message}`);
+        continue;
+      }
+      listed += conversations.length;
+      for (const c of conversations) {
+        const last = timestamps[c.uuid];
+        if (!last || last !== c.updated_at) toFetch.push({ conv: c, org });
+      }
+    }
+
+    console.log(`[claude] ${toFetch.length}/${listed} to fetch across ${chatOrgs.length} org(s)`);
 
     for (let i = 0; i < toFetch.length; i++) {
       if (options.signal?.aborted) {
         console.log(`[claude] sync aborted at ${i}/${toFetch.length}`);
         break;
       }
-      const conv = toFetch[i];
+      const { conv, org } = toFetch[i];
       onProgress?.(i + 1, toFetch.length);
       await sleep(500, options.signal);
       try {
         const full = await makeRequest(
-          `${BASE}/api/organizations/${orgId}/chat_conversations/${conv.uuid}`,
+          `${BASE}/api/organizations/${org.uuid}/chat_conversations/${conv.uuid}`,
           ses,
           undefined,
           { signal: options.signal },
         );
-        await onConversation?.(full);
+        await onConversation?.(withOrg(full, org));
         timestamps[conv.uuid] = conv.updated_at;
       } catch (e) {
         if (shouldRethrowProviderError(e, options.signal)) throw e;
@@ -100,7 +118,9 @@ const provider = {
         console.error(`[claude] Failed ${conv.uuid}: ${e.message}`);
       }
     }
-    return { failed };
+    // Every chat organization this sync enumerated, so `chatdump list --json` can
+    // say which organizations the archive covers.
+    return { failed, orgs: chatOrgs.map((o) => ({ uuid: o.uuid, name: o.name || '' })) };
   },
 
   convertToMarkdown(conversation) {
@@ -121,6 +141,8 @@ const provider = {
         source: 'claude',
         id: conversation.uuid,
         parserVersion: provider.parserVersion,
+        orgUuid: conversation.org_uuid,
+        orgName: conversation.org_name,
       },
       messages,
     );
@@ -155,6 +177,22 @@ function extractText(content) {
   return JSON.stringify(content);
 }
 
-provider._test = { extractText };
+// Organizations whose capabilities say they have no chat (API-only orgs) are
+// skipped; an org without a capabilities list is kept.
+function chatOrganizations(orgs) {
+  const withChat = orgs.filter(
+    (o) => o?.uuid && (!Array.isArray(o.capabilities) || o.capabilities.includes('chat')),
+  );
+  return withChat.length ? withChat : orgs.slice(0, 1);
+}
+
+// The conversation payload carries no organization; record which one it came
+// from so the Markdown frontmatter and the raw cache say so.
+function withOrg(conversation, org) {
+  if (!conversation || typeof conversation !== 'object') return conversation;
+  return { ...conversation, org_uuid: org.uuid, org_name: org.name || '' };
+}
+
+provider._test = { extractText, chatOrganizations, withOrg };
 
 module.exports = provider;

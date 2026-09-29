@@ -282,6 +282,7 @@ async function syncAccount(accountId, onStatus, options = {}) {
       });
       updateAccount(accountId, {
         timestamps,
+        ...(Array.isArray(fetchResult?.orgs) ? { orgs: fetchResult.orgs } : {}),
         lastSyncedAt: now,
         status: failedConversations ? 'partial' : 'ok',
         lastError: partialFailureMessage(failedConversations),

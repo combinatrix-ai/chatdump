@@ -30,6 +30,7 @@ function accountSummary(account, store) {
     lastError: account.lastError || '',
     lastSyncedAt: account.lastSyncedAt || '',
     vaultPath: store.getVaultPath(account.id) || '',
+    ...(Array.isArray(account.orgs) ? { orgs: account.orgs } : {}),
   };
 }
 

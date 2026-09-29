@@ -62,6 +62,16 @@ test('accountSummary shapes an account for CLI output', () => {
   assert.equal(summary.id, 'openai:a@example.com');
   assert.equal(summary.vaultPath, '/vault');
   assert.equal(summary.autoSync, true);
+  assert.equal('orgs' in summary, false);
+});
+
+test('accountSummary lists the Claude organizations the last sync covered', () => {
+  const orgs = [{ uuid: 'aaaaaaaa-0000-4000-8000-000000000001', name: 'Team' }];
+  const summary = accountSummary(
+    { id: 'claude:a@example.com', provider: 'claude', orgs },
+    makeStore([]),
+  );
+  assert.deepEqual(summary.orgs, orgs);
 });
 
 test('selectAccounts includes accounts with auto-sync disabled', () => {

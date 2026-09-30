@@ -19,8 +19,10 @@ function conversationMarkdown(fields, body) {
     `source: ${fields.source}`,
     `id: "${fields.id || ''}"`,
     `parser_version: ${fields.parserVersion}`,
-    '---',
   );
+  if (fields.orgUuid) lines.push(`org_uuid: ${JSON.stringify(fields.orgUuid)}`);
+  if (fields.orgUuid && fields.orgName) lines.push(`org_name: ${JSON.stringify(fields.orgName)}`);
+  lines.push('---');
 
   return `${lines.join('\n')}\n\n${body}\n`;
 }
